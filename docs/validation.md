@@ -29,3 +29,11 @@ QNAP で chmod 修正後も非 root import が拒否され、ビルド時の読�
 実際に POSIX ACL を設定したテストで、chmod 後も named-user ACL が残ること、ヘルパーでアクセス ACL と継承 ACL を除去できることを確認。ファイル内容とモード、シンボリックリンク経由の対象外ファイルを変更しないことも検証。制限外の pytest は **37件成功**（Python 3.14.4、既存の非推奨警告1件）。サンドボックス内では ACL fixture 設定に EINVAL が出るため、その場合だけテストを skip するが、制限外では skip なしで成功した。
 
 QNAP 実機の原因が POSIX ACL であることは未確定。修正版イメージの QNAP 上のビルド・起動は引き続き未検証。非 root のビルド検証を維持しており、権限問題を root 実行で回避しない。
+
+## server-a の公開準備
+
+利用者の QNAP ログで Python 3.15 イメージのビルド・非 root import 検証・Uvicorn 起動成功を確認。server-a の curl でも QNAP の GUI / API の応答を確認済み。
+
+server-a ホストの Tailscale Running・DNS 名・IP と未使用の8443番を読み取り確認し、既存ホスト Tailscale + Caddy の専用 Compose を追加。Compose 構文は成功、公式サイトから取得した Caddy の validate は Valid configuration。adapt 後の JSON でも Tailnet IPv4 の8443番だけの listen、管理 API と HTTP リダイレクトの無効化、LAN upstream を確認した。
+
+sudo は対話認証が必要なためプロキシコンテナの起動は未実施。HTTPS 証明書取得、別の Tailnet 端末からのブラウザ表示・ACL 動作・LAN からの非到達性は起動後に確認する。

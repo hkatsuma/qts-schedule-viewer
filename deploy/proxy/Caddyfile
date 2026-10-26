@@ -1,0 +1,14 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+https://{$QSV_PUBLIC_HOST}:{$QSV_PUBLIC_PORT} {
+	bind {$QSV_TAILNET_IP}
+	tls {
+		get_certificate tailscale
+	}
+	reverse_proxy http://{$QSV_UPSTREAM} {
+		header_up Host {http.request.host}
+	}
+}

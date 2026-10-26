@@ -1,0 +1,33 @@
+# Run on server-a. Uses the existing HOST tailscaled, no new VPN node.
+name: qsv-proxy
+services:
+  proxy:
+    image: caddy:2
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      QSV_PUBLIC_HOST: ${QSV_PUBLIC_HOST:-server-a.tailnet-name.ts.net}
+      QSV_PUBLIC_PORT: ${QSV_PUBLIC_PORT:-8443}
+      QSV_TAILNET_IP: ${QSV_TAILNET_IP:-100.101.102.103}
+      QSV_UPSTREAM: ${QSV_UPSTREAM:-192.168.0.1:18080}
+    volumes:
+      - type: bind
+        source: ./proxy/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/run/tailscale/tailscaled.sock
+        target: /var/run/tailscale/tailscaled.sock
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  caddy_data:
+  caddy_config:

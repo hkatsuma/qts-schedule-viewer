@@ -108,3 +108,31 @@ docker compose logs --tail=50 qsv
 再ビルド後も同じエラーが出る場合は、実際に使用している Compose プロジェクトとイメージが修正版であること、追加の override で `/app` をホストからマウントしていないことを確認する。
 
 ログの `git was not found` はビルド時にコミット情報を付与できない警告であり、今回の PermissionError の原因ではない。
+
+## server-a での今回の公開設定
+
+2026-10-26 にホスト Tailscale の Running 状態と DNS 名 `server-a.tailnet-name.ts.net`、IPv4 `100.101.102.103` を確認。ホストの8443番は未使用。QNAP `http://192.168.0.1:18080/` から HTTP 200 を確認した。Docker は sudo 認証が必要で、ここからの起動は未実施。
+
+`deploy/compose.proxy.yaml` は既存の **ホスト Tailscale** を使う Caddy だけの構成。起動場所は server-a。QNAP 用のルート compose.yaml とは別プロジェクトであり、アプリは再起動しない。
+
+```sh
+# server-a 上、本リポジトリのディレクトリで実行
+sudo docker compose -f deploy/compose.proxy.yaml run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile
+sudo docker compose -f deploy/compose.proxy.yaml up -d
+sudo docker compose -f deploy/compose.proxy.yaml logs --tail=50 proxy
+```
+
+ブラウザで `https://server-a.tailnet-name.ts.net:8443/` を開く。利用端末は Tailnet に接続し、既存 Tailscale ACL が server-a の TCP 8443 を許可している必要がある。ACL の設定自体はこの Compose から変更しない。
+
+Caddy は host network を使い、Tailnet IPv4 の8443だけに bind する。HTTPリダイレクト用の80番と管理APIは無効化。証明書は既存 tailscaled の socket 経由で取得し、Tailnet の HTTPS 設定が有効であることが前提。LAN upstream の実送信元は server-a のホスト側 LAN IP になるため、既に curl で許可を確認した接続元と同じ経路を使える。
+
+設定値は `QSV_PUBLIC_HOST`、`QSV_PUBLIC_PORT`、`QSV_TAILNET_IP`、`QSV_UPSTREAM` で上書きできる。既定値は上記の実測環境用。socket は証明書取得に使うため、共有先はこのプロキシだけとし、ほかのコンテナに共有しない。
+
+起動後、同じホストからの確認例：
+
+```sh
+curl -fsS -o /dev/null -w '%{http_code}\n' https://server-a.tailnet-name.ts.net:8443/
+curl -fsS -X POST -H 'Origin: https://server-a.tailnet-name.ts.net:8443' https://server-a.tailnet-name.ts.net:8443/api/refresh
+```
+
+最終確認は別の許可済み Tailnet 端末のブラウザで行う。LAN だけの端末から `https://192.168.0.2:8443/` へ接続できないことも確認する。設定変更の反映は `sudo docker compose -f deploy/compose.proxy.yaml restart proxy`。停止は同じファイルを指定して `down` とし、QNAP の QSV や既存のほかのプロキシは停止しない。
