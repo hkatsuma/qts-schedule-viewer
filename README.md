@@ -36,7 +36,7 @@ QNAP 上で `.env.example` を `.env` にコピーし、`QSV_BIND_IP`（QNAP の
 
 ## 開発・テスト
 
-Python 3.13 以上を使用します。人工データでのローカル確認例：
+コンテナは Python 3.15 を使用します。ローカル開発も Python 3.15 を推奨します（既存テストは 3.14 でも実施）。人工データでのローカル確認例：
 
 ```sh
 python3 -m venv .venv

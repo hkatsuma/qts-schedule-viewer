@@ -12,4 +12,12 @@
 
 実際の Uvicorn を開発環境の loopback で起動し、送信元を別の loopback IP に変えた TCP 接続でも検証した。許可 peer は200、非許可 peer は403、許可 IP の転送ヘッダー偽装は403、許可 peer の転送ヘッダーが非許可 IP でも200となること、healthz 以外には loopback の例外がないことを確認済み。旧同一ホスト用 override は無効化し、Caddy 例の upstream は QNAP の LAN HTTP に変更した。
 
-未検証：Docker イメージのビルド・コンテナ起動（開発 PC の Docker daemon に接続権限なし）、Python 3.13 のコンテナ内実行、実ブラウザの描画と操作、QNAP の実設定・権限、server-a から QNAP への到達性と実際の送信元、他の LAN 端末への HTTP 403、Tailnet 内外からの到達性、server-a のプロキシ設定の実機適用、両ホストの再起動後の復旧。これらを済ませるまで初期バージョンの受け入れ完了とはしない。
+未検証：Docker イメージのビルド・コンテナ起動（開発 PC の Docker daemon に接続権限なし）、Python 3.15 のコンテナ内実行、実ブラウザの描画と操作、QNAP の実設定・権限、server-a から QNAP への到達性と実際の送信元、他の LAN 端末への HTTP 403、Tailnet 内外からの到達性、server-a のプロキシ設定の実機適用、両ホストの再起動後の復旧。これらを済ませるまで初期バージョンの受け入れ完了とはしない。
+
+## QNAP 起動時の PermissionError と Python 3.15 への更新
+
+利用者の QNAP 上で `/app/src/__init__.py` の PermissionError を観測。アプリコードを非 root ユーザーが読めない状態だったため、Dockerfile で所有者とディレクトリ0755・ファイル0644を明示した。ホスト側のビルドコンテキストの正確なモード / ACL は未確認。非 root ユーザーに切り替えた後のビルド工程でアプリ import と全ソース・静的ファイルの読み取りを行い、再発時はビルドを失敗させる。
+
+ベースイメージを `python:3.15-slim` に変更。[公式イメージ定義](https://github.com/docker-library/official-images/blob/master/library/python) で提供を確認。Python 3.15 / CPython / manylinux2014 x86_64 向けに requirements.txt の全依存 wheel をダウンロードできることを確認した。これは配布物の存在・依存解決の確認であり、Python 3.15 での実行検証や他 CPU 向けの検証ではない。
+
+修正後も既存アプリテスト34件は Python 3.14.4 で成功。Docker build はサンドボックス外でも daemon socket の Permission denied で実行できなかったため、修正版イメージのビルド・非 root 起動・Python 3.15 の実行検証は QNAP 側で必要。再ビルド手順は deployment.md を参照。

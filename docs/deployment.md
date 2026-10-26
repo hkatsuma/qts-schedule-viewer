@@ -90,3 +90,17 @@ LAN 区間は HTTP であり Tailscale による暗号化の対象外。信頼�
 単一ファイルの bind mount は、QTS が rename で設定を置換すると古い inode を参照し続ける可能性がある。更新方法は実機未確認。反映されない場合は QNAP 上で `docker compose up -d --force-recreate qsv` によりマウントし直す。`/etc/config` 全体の共有で回避しない。
 
 更新は QNAP 上でコード取得後 `docker compose up -d --build`。削除時は server-a の QSV 向けサイトを除去し、QNAP で `docker compose down` を実行する。既存 Tailscale state・証明書・QTS 設定は削除しない。
+
+## アプリ読み込み時の PermissionError
+
+`Permission denied: '/app/src/__init__.py'` は、アプリ自身のイメージ内ファイルを非 root ユーザーが読めない起動エラー。crontab の読み取り権限不足とは別の問題である。共有フォルダ経由のビルドコンテキストではファイルモードが制限される可能性があるため、Dockerfile でコピー後の `/app` とソースディレクトリを0755、ファイルを0644、所有者を root に明示する。ビルド中に非 root ユーザーで import と静的ファイルの読み取りを検証する。QTS 側の設定ファイルや共有フォルダの権限は変更しない。
+
+修正版は Python 3.15 の公式 slim イメージを使用する。Dockerfile の修正を反映するには QNAP 上でイメージの再ビルドが必要。
+
+```sh
+docker compose build --pull qsv
+docker compose up -d --force-recreate qsv
+docker compose logs --tail=50 qsv
+```
+
+再ビルド後も同じエラーが出る場合は、実際に使用している Compose プロジェクトとイメージが修正版であること、追加の override で `/app` をホストからマウントしていないことを確認する。
