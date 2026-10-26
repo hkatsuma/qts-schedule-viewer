@@ -6,15 +6,17 @@
 
 ファイル読取の例外本文・元の行・秘密値をログやエラー応答に含めない。タスク ID は原文の SHA-256 の一部に同一行の連番を加える。同一行を複数登録したものは根拠なく統合しない。行の移動で ID は変わらないが、式やコマンドの変更では変わる。
 
-ブラウザ向け入口は server-a の Tailnet 側リバースプロキシに限定する。QNAP に Tailscale は導入しない。QSV のバックエンドは QNAP の指定 LAN IP・専用ポートで到達可能にし、そのポートの接続元を server-a の実際の送信元 IP に限定する。LAN IP への bind は送信元制限ではない。独自認証がないため、この制限なしに LAN に公開すると Tailnet を経由しない閲覧が可能になる。
+ブラウザ向け入口は server-a の Tailnet 側リバースプロキシに限定する。QNAP に Tailscale は導入しない。QSV のバックエンドは QNAP の指定 LAN IP・専用ポートで到達可能にし、アプリの allowlist で server-a の実際の送信元 IP 以外の要求に 403 を返す。TCP 接続自体を拒否する firewall ではない。LAN IP への bind は送信元制限ではない。独自認証がないため、この制限なしに LAN に公開すると Tailnet を経由しない閲覧が可能になる。
 
-Tailnet ACL は server-a の入口を保護するものであり、QNAP の LAN ポートへの直接接続には適用されない。Docker のポート公開が既存ファイアウォールの想定する経路を通るかは実機確認が必要。ルールを設定しただけで有効と判断せず、許可元と拒否元から実測する。[Docker のファイアウォールの説明](https://docs.docker.com/engine/network/packet-filtering-firewalls/) を参照。
+Tailnet ACL は server-a の入口を保護するものであり、QNAP の LAN ポートへの直接接続には適用されない。QSV はプロキシを経由する前のクライアント IP を検査しない。リバースプロキシへのアクセスは Tailscale ACL で制御し、そこに独自の IP allowlist は追加しない。QSV_ALLOWED_PROXY_IPS は中継するプロキシだけを列挙し、空は全拒否、不正な IP は起動エラーとする。
 
-Tailnet と server-a 間の暗号化は QNAP まで延長されない。バックエンド HTTP は信頼できる LAN に限定し、それ以外では証明書検証つき HTTPS 等を検討する。ブラウザ向け証明書・ACL・Funnel・IPv6 を含む確認事項は [deployment.md](deployment.md) を参照。
+Docker の NAT によって実際の接続元を区別できなくなる経路がないか実機確認する。許可元・拒否元の両方から実測し、共通の gateway IP を安易に許可しない。必要なら既存のネットワーク側制限を併用する。[Docker のファイアウォールの説明](https://docs.docker.com/engine/network/packet-filtering-firewalls/) を参照。
 
-収集コンテナの host network、privileged、Docker socket、ホストの /etc 全体マウントは使用しない。QNAP の設定ファイルや権限をアプリから変更しない。既存の管理機構や上位ネットワークで安全な接続制限を実現できない場合は、公開を保留して代替経路を検討する。
+Tailnet と server-a 間の暗号化は QNAP まで延長されない。今回の環境は信頼するホーム LAN とし、バックエンド HTTP + プロキシ IP 制限を採用する。追加の認証情報・パスワード・トークン・バックエンド TLS は要求しない。ブラウザ向け証明書・ACL・Funnel・IPv6 を含む確認事項は [deployment.md](deployment.md) を参照。
+
+収集コンテナの host network、privileged、Docker socket、ホストの /etc 全体マウントは使用しない。QNAP の設定ファイルや権限をアプリから変更しない。許可されたプロキシとホーム LAN を信頼する構成であり、プロキシの侵害や LAN 内での IP 詐称を認証で防ぐものではない。
 
 
-認証・ユーザー管理は実装しない。POST /api/refresh は異なる Origin のブラウザリクエストを拒否するが、認証の代わりではない。プロキシヘッダーは信用せず、HTTPS プロキシ経由の Origin は Host の一致で判定する。
+認証・ユーザー管理は実装しない。POST /api/refresh は異なる Origin のブラウザリクエストを拒否するが、認証の代わりではない。Uvicorn は --no-proxy-headers で起動し、プロキシヘッダーは信用せず、HTTPS プロキシ経由の Origin は Host の一致で判定する。
 
 単一ファイル mount は QTS の atomic replacement に追従しない可能性がある。root しか読めない設定への対応や内部 DB の権限分離は未実装であり、必要と判明した時点で最小情報のスナップショット方式を検討する。

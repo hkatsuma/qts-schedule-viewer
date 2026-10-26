@@ -5,8 +5,8 @@ from src.api import create_app
 def test_api_export_and_refresh(tmp_path):
     path = tmp_path / 'cron'
     path.write_text('0 3 * * * /example/task --token=SECRET\n@reboot SECRET')
-    app = create_app(path, 'Asia/Tokyo')
-    with TestClient(app) as client:
+    app = create_app(path, 'Asia/Tokyo', allowed_proxy_ips='192.168.10.10')
+    with TestClient(app, client=('192.168.10.10', 12345)) as client:
         response = client.get('/api/schedules')
         assert response.status_code == 200
         assert 'SECRET' not in response.text

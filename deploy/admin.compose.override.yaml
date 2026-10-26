@@ -1,11 +1,4 @@
-# Merge into the EXISTING nas-a-admin project on QNAP.
-# caddy uses network_mode: service:tailscale, so attach tailscale, not caddy.
-services:
-  tailscale:
-    networks:
-      - default
-      - qsv_backend
-networks:
-  qsv_backend:
-    external: true
-    name: qsv_backend
+# Retired: a shared Docker bridge cannot connect server-a and QNAP.
+# Kept as an inert migration notice; do not include this file in deployments.
+# Use QNAP's LAN IP + dedicated HTTP port as the proxy upstream instead.
+services: {}

@@ -1,91 +1,92 @@
 # QNAP と server-a への配置・Tailnet 公開
 
-## 採用する構成
-
-- **QNAP**：Container Station / Docker で QSV を実行する。収集・キャッシュ・API・Web UI を同じコンテナに置く。QNAP で Tailscale は動かさない。
-- **server-a**：既存の Tailscale 参加ホスト。リバースプロキシで Tailnet からの要求を受け、LAN 経由で QNAP の QSV へ転送する。ブラウザ向け HTTPS はここで終端する。
-- **開発 PC**：QNAP のディレクトリをマウントしてコードを編集する。コンテナ実行ホストではない。
+## 採用する構成と制御の分担
 
 ```text
-ブラウザ ── Tailnet / HTTPS ── server-a ── LAN ── QNAP / QSV
-                               プロキシ・TLS           収集・API・Web UI
+ブラウザ ── Tailnet / HTTPS ── server-a ── ホーム LAN / HTTP ── QNAP / QSV
+             Tailscale ACL       リバースプロキシ                    プロキシ IP 制限
 ```
 
-外部公開するのは server-a の Tailnet 側入口だけとする。QNAP のバックエンド入口はプロキシ専用で、一般の LAN 端末には開放しない。新しい Tailscale ノードや、QNAP 設定の server-a への共有は不要。
+- QNAP：Container Station / Docker で収集・キャッシュ・API・Web UI を同じコンテナに置く。Tailscale は動かさない。
+- server-a：既存の Tailscale とリバースプロキシを使い、ブラウザ向け HTTPS を終端する。ここへのアクセスは **Tailscale ACL** で制御し、プロキシ側に独自の IP allowlist は追加しない。
+- QSV：バックエンドに直接接続する **中継プロキシの IP だけ** を allowlist で制限する。Tailnet の各クライアント IP は検査しない。
+- ホーム LAN は信頼する。バックエンドは HTTP + プロキシ IP 制限とし、パスワード・トークン等の追加認証情報は使わない。
+- 開発 PC：QNAP のディレクトリをマウントして編集する。コンテナ実行ホストではない。
 
-## 現行ファイルとの差分
+新しい Tailscale ノードや設定ファイルの server-a への共有は不要。同名 Docker bridge network で別ホストは接続できないため、QNAP の LAN IP・専用ポートを upstream にする。
 
-**今回はドキュメントの訂正だけを行っている。以下の設定ファイルは旧構成用であり、新構成の導入にそのまま使わない。**
+## QNAP 上での設定・起動
 
-| ファイル | 現在の前提 | 次の実装で必要な変更 |
+`/etc/config/crontab` 1ファイルを読み取り専用 bind mount する。非 root、capabilities 全削除、privileged・Docker socket 不使用、root filesystem 読み取り専用を維持する。QTS の設定やファイル権限をアプリから変更しない。読み取り権限がなければ収集状況に表示する。
+
+QNAP のシェルで実行する。Container Station から Compose を登録する場合も QNAP 上のファイルと同じ設定値を使う。
+
+```sh
+cp .env.example .env
+# 下表に従い .env を編集する
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=50 qsv
+```
+
+| 環境変数 | 意味 | 設定例（実機値に置換） |
 |---|---|---|
-| compose.yaml | ホストポートなし、外部 qsv_backend ネットワーク | QNAP の指定 LAN IP・専用ポートでバックエンドを提供する構成へ変更 |
-| .env.example | 共有 Docker ネットワーク名を指定 | QNAP の bind IP・ポート等を追加し、不要な共有ネットワーク設定を整理 |
-| deploy/admin.compose.override.yaml | 同一 Docker ホストの Tailscale に qsv_backend を追加 | 別ホスト間には使えないため廃止または置換 |
-| deploy/Caddyfile.qsv.example | upstream が Docker サービス名 qsv:8000 | server-a 上の配置に合わせ、QNAP の LAN IP・専用ポートを upstream にする |
+| QSV_BIND_IP | ポートを公開する QNAP の LAN IP。必須 | 192.168.0.1 |
+| QSV_BIND_PORT | 未使用のバックエンド HTTP ポート | 18080 |
+| QSV_ALLOWED_PROXY_IPS | QNAP から見たプロキシの接続元 IP。必須 | 192.168.0.2 |
+| QSV_CRONTAB_SOURCE | QNAP 上の参照ファイル | /etc/config/crontab |
+| QSV_TIMEZONE | NAS のタイムゾーン | Asia/Tokyo |
+| QSV_REFRESH_SECONDS | 収集周期。最小30秒 | 300 |
+| QSV_UID / QSV_GID | コンテナの非 root 実行ユーザー | 10001 / 10001 |
 
-同名の Docker bridge network は異なるホスト間で共有されない。既存 `nas-a-admin` は構成の参考であり、その配置ホストや稼働状況を参照ディレクトリだけで断定しない。server-a の実際のプロキシが Caddy かどうかも確認してから設定を作る。
+QSV_BIND_IP は LAN の特定アドレスにする。`0.0.0.0` や全 IPv6 への無条件の公開を避ける。localhost だけへの bind では別ホストから接続できない。IP は DHCP 予約等で安定させる。
 
-## QNAP 側の設計
+QSV_ALLOWED_PROXY_IPS はカンマ区切りの個別 IPv4 / IPv6 アドレス。前後の空白は除去する。CIDR・ホスト名・ワイルドカード・末尾の空要素は不正として起動エラーにする。IPv4-mapped IPv6 は IPv4 と同一視する。Compose では未設定・空を設定エラーにする。アプリ単体で未設定・空の場合は全拒否になる。
 
-`/etc/config/crontab` 1ファイルを読み取り専用 bind mount する。非 root UID/GID 10001 を基本とし、capabilities 全削除、privileged・Docker socket 不使用、root filesystem 読み取り専用を維持する。パスは Docker が動く **QNAP 側のパス**。NAS のタイムゾーンを QSV_TIMEZONE に明示する。
+例：`QSV_ALLOWED_PROXY_IPS=192.168.0.2,192.168.0.3` は2台の中継プロキシを許可する。Tailnet クライアントのアドレスを列挙する設定ではない。
 
-QTS 側の設定やファイル権限は変更しない。読み取れなければ権限不足として表示する。既存の参照可能なグループがある場合のみ GID を合わせ、Web プロセスを root にして解消しない。
+設定変更後は `docker compose up -d` でコンテナを再作成する。単なる restart では変更後の環境変数は反映されない。
 
-バックエンドは QNAP の特定 LAN IP と未使用の専用 TCP ポートを使用する。例として `192.168.0.1:18080 → コンテナ:8000` のようなマッピングを設計するが、IP・ポートは実測して決定する。これは設定値の例であり現行 Compose の設定ではない。
+## IP 判定とヘルスチェック
 
-- `0.0.0.0` や全 IPv6 アドレスへの無条件の公開を避ける。
-- QNAP の localhost だけへの bind では、別ホストの server-a から接続できない。
-- LAN IP への bind だけでは接続元は制限できない。バックエンドポートへは server-a の実際の送信元 IP のみ許可する。
-- 接続制限は既存の NAS 管理機構や上位ネットワークを使い、QSV 自身が QTS の firewall 設定を書き換える機能は作らない。安全に制限できる経路を確保するまで公開しない。
+QSV は実際の TCP 接続元を判定する。`X-Forwarded-For`、`Forwarded`、`X-Real-IP` は一切 allowlist 判定に使わない。Dockerfile の Uvicorn `--no-proxy-headers` を外さない。
 
-Docker の公開ポートには独自の NAT / firewall 規則が関与する。QNAP の firewall 製品や Container Station で送信元制限が期待どおり効くかは未確認。任意の iptables コマンドや Docker daemon の全体設定変更を導入手順に含めず、実機の経路を確認して方法を決める。[Docker のポート公開](https://docs.docker.com/engine/network/port-publishing/) と [firewall の説明](https://docs.docker.com/engine/network/packet-filtering-firewalls/) を参照。
+許可外の接続からの画面・API・CSV・静的ファイルへの要求には **HTTP 403** を返す。アプリ層の制限であり、TCP 接続を遮断する firewall ではない。唯一の例外はコンテナ内 loopback からの `/healthz` で、Docker HEALTHCHECK のために許可する。loopback でも他の API・画面は通常の制限対象。
 
-## server-a 側の設計
+コンテナ / NAT / 複数 NIC により実際の接続元が想定と異なる場合がある。許可元・拒否元の両方から実測し、server-a だけを識別できることを確認する。複数の送信元が共通の gateway IP に見える場合は、その gateway を安易に許可しない。経路の見直しや既存のネットワーク制限でプロキシを区別する。
 
-既存 Tailscale の実行形態とリバースプロキシの配置を確認する。プロキシがホスト上かコンテナ内か、Tailscale とネットワーク名前空間を共有するかは未確認であり、既存方式に合わせる。
+Docker と firewall の経路については [Docker のポート公開](https://docs.docker.com/engine/network/port-publishing/) と [firewall の説明](https://docs.docker.com/engine/network/packet-filtering-firewalls/) を参照。QSV が QTS の firewall を書き換える機能は持たない。
 
-- upstream は `http://<QNAP の LAN IP>:<専用ポート>` を基本案とする。`qsv:8000`、`127.0.0.1:8000`、QNAP の管理画面ポートには向けない。
-- ブラウザ向けリスナーを既存の Tailnet 専用入口に追加し、ACL / Grants で利用者を制限する。LAN やインターネットへの入口を増やさず、Funnel は使わない。
-- Tailnet IP に直接 bind する方式なら、その IP がプロキシの名前空間に存在することを確認する。userspace モードでこの方式が使えると推定しない。
-- HTTPS は既存の証明書・ドメインの運用に合わせる。証明書の検証を無効化したり、端末で警告を無視したりする運用は採らない。
-- アプリの手動再取得時の Origin 検査が成立するよう、元の Host を保持する。プロキシ用サブドメインまたは専用ポートのルート `/` 配下で公開する。現状の UI は絶対パスを使うため、`/qsv/` 配下への配置は未対応。
-- LAN 側の実際の送信元 IP を確認する。コンテナ / NAT / 複数 NIC により server-a の想定 IP と異なる場合がある。
+## server-a のリバースプロキシ
 
-Tailnet の暗号化は server-a までで、LAN 側 HTTP の盗聴や改ざんを防がない。HTTP は信頼できる LAN と接続制限を前提とする。共有 LAN や信頼できない経路を通る場合は、バックエンドも証明書検証つき HTTPS 等で保護する。HTTPS だけでは送信元制限の代わりにはならない。
+`deploy/Caddyfile.qsv.example` は Caddy の設定例。実際のプロキシ製品・配置・Tailscale モード・IP・ドメイン・証明書はまだ未確認であり、既存方式に合わせる。
 
-## 実装前に確認する情報
+1. upstream を `http://<QNAP の LAN IP>:<専用ポート>` にする。Docker サービス名 `qsv:8000` や server-a 自身の localhost には向けない。
+2. 既存の Tailnet 専用入口にサイトを追加し、Tailscale ACL で利用者を制限する。独自の IP allowlist や追加の認証情報はプロキシに設けない。Funnel は使わない。
+3. Tailnet IP へ直接 bind する設定例は、その IP がプロキシのネットワーク名前空間に存在する場合に使う。userspace モードなら既存の検証済み Tailnet 受信方式に合わせる。
+4. ブラウザ向け HTTPS は既存の証明書運用に合わせる。例の `get_certificate tailscale` は既存構成同様に Tailscale socket へのアクセスが必要。
+5. 元の Host を保持する。手動再取得の Origin 検査に必要。現状の UI はルート `/` 配下用なので、専用ドメインまたは専用ポートを使う。`/qsv/` のようなサブパス配置は未対応。
+6. 設定を検証してから既存の手順で reload する。QSV の導入のために既存 Tailscale インスタンスを増やさない。
 
-| 項目 | 状態 |
-|---|---|
-| QNAP の LAN IP / 未使用ポート / Docker バージョン | 未確認 |
-| server-a から QNAP への経路と送信元 IP | 未確認 |
-| バックエンドポートに有効な送信元制限の方式 | 未確認 |
-| server-a のプロキシ製品・配置・Tailscale モード | 未確認 |
-| ブラウザ向けドメイン・証明書・ACL / Grants | 未確認 |
-| LAN 区間を HTTP にできる信頼境界 | 未確認 |
+Caddy の参考：[reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)。
 
-IP は DHCP 予約等で安定させる。IP アドレス制限は server-a とその LAN を信頼する前提であり、強い接続元認証が必要な環境では mTLS 等を検討する。
+旧 `deploy/admin.compose.override.yaml` は同一ホスト用だったため、現在は無効な移行案内として `services: {}` のみを残している。両ホストの起動ファイルへ組み込む必要はない。
 
 ## 実機での検証
 
-1. QNAP のマウント元・権限・タイムゾーン、Compose の bind IP とポートを確認する。
-2. server-a の実際のプロキシ実行環境から QNAP の `/healthz` と画面へ接続できることを確認する。
-3. 許可していない LAN 端末から QNAP のバックエンドへ直接接続できないことを確認する。IPv6、別 NIC、コンテナの直接ルーティング経路も確認する。
-4. 許可された Tailnet 端末から HTTPS で閲覧・手動再取得・CSV 出力でき、証明書が信頼できることを確認する。
-5. ACL で許可されていない Tailnet 端末から接続できないこと、Tailnet を切った端末から server-a の LAN IP と公開 IP の入口へ接続できないことを確認する。
-6. ルーターのポート転送、既存 proxy、Funnel 等が入口を一般公開していないことを確認する。
-7. cron の収集結果を QTS の設定と照合する。空と失敗が区別され、設定変更が再取得で反映されることを確認する。
-8. QNAP と server-a をそれぞれ再起動し、アプリ・proxy・Tailscale・接続制限が復旧することを確認する。片方の停止が他方の管理機能へ影響しないことも確認する。
+1. QNAP の bind IP・ポート・マウント・権限・タイムゾーンを確認する。
+2. server-a の実際のプロキシ実行環境から QNAP の `/healthz`、画面、API が HTTP 200 になることを確認する。
+3. 許可していない LAN 端末から QNAP の画面・API・CSV が HTTP 403 になることを確認する。許可 IP を X-Forwarded-For に偽装しても拒否されることを確認する。IPv6・別 NIC 経路も確認する。
+4. 許可された Tailnet 端末から HTTPS で閲覧・手動再取得・CSV 出力できることを確認する。許可されない端末は Tailscale ACL で拒否されることを確認する。
+5. Tailnet を切った端末から server-a の LAN IP や公開 IP で入口を利用できず、ルーターのポート転送や Funnel 等でも一般公開されていないことを確認する。
+6. QTS の設定と収集結果を照合し、設定変更後の再取得も確認する。
+7. 両ホストをそれぞれ再起動し、QSV・proxy・Tailscale・設定値が復旧することを確認する。
 
-独自認証がないため、Tailnet の入口制御と LAN バックエンドの送信元制限の両方が成立することを公開条件とする。実機検証は未実施。
+LAN 区間は HTTP であり Tailscale による暗号化の対象外。信頼するホーム LAN と許可したプロキシを前提とする。実機検証は未実施。
 
-## ファイル更新時の注意
+## ファイル更新・運用
 
-単一ファイルの bind mount は、QTS が rename により設定ファイルを置換すると古い inode を参照し続ける可能性がある。更新方法は実機未確認。反映されない場合は QNAP 上でコンテナを再作成してマウントを確認する。`/etc/config` 全体の共有で回避しない。
+単一ファイルの bind mount は、QTS が rename で設定を置換すると古い inode を参照し続ける可能性がある。更新方法は実機未確認。反映されない場合は QNAP 上で `docker compose up -d --force-recreate qsv` によりマウントし直す。`/etc/config` 全体の共有で回避しない。
 
-## 更新・停止・削除の方針
-
-新構成の Compose を実装・確認した後、QNAP 上でアプリをビルド・更新する。server-a では QSV 向けのプロキシ設定だけを追加・更新し、Tailscale ノードを新設しない。
-
-削除時は server-a の QSV 向けルートを除去し、QNAP のアプリと専用ポートの公開を停止する。追加した専用接続ルールだけを整理し、既存サービスの設定・Tailscale state・証明書・QTS 設定を削除しない。実行コマンドは新構成の実装後に確定する。
+更新は QNAP 上でコード取得後 `docker compose up -d --build`。削除時は server-a の QSV 向けサイトを除去し、QNAP で `docker compose down` を実行する。既存 Tailscale state・証明書・QTS 設定は削除しない。

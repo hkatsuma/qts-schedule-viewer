@@ -13,14 +13,18 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from src.collectors.cron import CronCollector
 from src.services.collection import CollectionService
+from src.services.access import IPAllowlist
 from src.services.schedules import occurrences, next_runs
 
 WEB = Path(__file__).parent / 'web'
 
 
-def create_app(path: Path | None = None, timezone: str | None = None) -> FastAPI:
+def create_app(path: Path | None = None, timezone: str | None = None,
+               allowed_proxy_ips: str | None = None) -> FastAPI:
     zone = timezone or os.getenv('QSV_TIMEZONE', 'Asia/Tokyo')
     ZoneInfo(zone)  # Fail clearly at startup on a misconfigured timezone.
+    allowlist = IPAllowlist(allowed_proxy_ips if allowed_proxy_ips is not None
+                           else os.getenv('QSV_ALLOWED_PROXY_IPS', ''))
     service = CollectionService(CronCollector(path or Path(os.getenv('QSV_CRONTAB_PATH', '/host/crontab')), zone),
                                 max(30, int(os.getenv('QSV_REFRESH_SECONDS', '300'))))
 
@@ -38,7 +42,14 @@ def create_app(path: Path | None = None, timezone: str | None = None) -> FastAPI
 
     @app.middleware('http')
     async def headers(request: Request, call_next):
-        response = await call_next(request)
+        peer = request.client.host if request.client else None
+        if request.url.path == '/healthz' and peer in ('127.0.0.1', '::1', '::ffff:127.0.0.1'):
+            # Loopback exemption is limited to container-local liveness checks.
+            response = await call_next(request)
+        elif not allowlist.permits(peer):
+            response = Response('Forbidden', status_code=403, media_type='text/plain')
+        else:
+            response = await call_next(request)
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'no-referrer'
