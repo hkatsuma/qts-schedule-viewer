@@ -93,14 +93,18 @@ LAN 区間は HTTP であり Tailscale による暗号化の対象外。信頼�
 
 ## アプリ読み込み時の PermissionError
 
-`Permission denied: '/app/src/__init__.py'` は、アプリ自身のイメージ内ファイルを非 root ユーザーが読めない起動エラー。crontab の読み取り権限不足とは別の問題である。共有フォルダ経由のビルドコンテキストではファイルモードが制限される可能性があるため、Dockerfile でコピー後の `/app` とソースディレクトリを0755、ファイルを0644、所有者を root に明示する。ビルド中に非 root ユーザーで import と静的ファイルの読み取りを検証する。QTS 側の設定ファイルや共有フォルダの権限は変更しない。
+`Permission denied: '/app/src/__init__.py'` は、アプリ自身のイメージ内ファイルを非 root ユーザーが読めない起動エラー。crontab の読み取り権限不足とは別の問題である。通常の chmod だけでは、名前付きユーザーへの拒否 ACL が残る場合がある。Dockerfile はビルド用 `deploy/prepare_image.py` で、イメージ内 `/app` の POSIX アクセス ACL・ディレクトリのデフォルト ACL を除去してから、ディレクトリ0755・ファイル0644へ正規化する。所有者は COPY で root に明示する。ACL の除去に失敗した場合はビルドを止める。ビルド中に非 root ユーザーで import と静的ファイルの読み取りを検証する。QTS 側の設定ファイルや共有フォルダの権限は変更しない。
+
+chmod のみの前回修正でも同じエラーが発生したため、ACL の除去を追加した。QNAP 実機の ACL 値は未取得であり、これが実機の原因であることは未確定。POSIX ACL とモードの相互作用は [Moby の報告](https://github.com/moby/moby/issues/49766) も参照。
 
 修正版は Python 3.15 の公式 slim イメージを使用する。Dockerfile の修正を反映するには QNAP 上でイメージの再ビルドが必要。
 
 ```sh
-docker compose build --pull qsv
+docker compose build --pull --no-cache qsv
 docker compose up -d --force-recreate qsv
 docker compose logs --tail=50 qsv
 ```
 
 再ビルド後も同じエラーが出る場合は、実際に使用している Compose プロジェクトとイメージが修正版であること、追加の override で `/app` をホストからマウントしていないことを確認する。
+
+ログの `git was not found` はビルド時にコミット情報を付与できない警告であり、今回の PermissionError の原因ではない。

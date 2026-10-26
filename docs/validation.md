@@ -21,3 +21,11 @@
 ベースイメージを `python:3.15-slim` に変更。[公式イメージ定義](https://github.com/docker-library/official-images/blob/master/library/python) で提供を確認。Python 3.15 / CPython / manylinux2014 x86_64 向けに requirements.txt の全依存 wheel をダウンロードできることを確認した。これは配布物の存在・依存解決の確認であり、Python 3.15 での実行検証や他 CPU 向けの検証ではない。
 
 修正後も既存アプリテスト34件は Python 3.14.4 で成功。Docker build はサンドボックス外でも daemon socket の Permission denied で実行できなかったため、修正版イメージのビルド・非 root 起動・Python 3.15 の実行検証は QNAP 側で必要。再ビルド手順は deployment.md を参照。
+
+## chmod 後にも残る拒否と ACL 対応
+
+QNAP で chmod 修正後も非 root import が拒否され、ビルド時の読み取り検査が失敗した。POSIX ACL の名前付きユーザーエントリは chmod で消えないため、`deploy/prepare_image.py` を追加し、イメージ内 `/app` だけの access/default ACL を除去してからモードを設定する。ホストの設定・共有ディレクトリ・Docker の保存領域は変更しない。
+
+実際に POSIX ACL を設定したテストで、chmod 後も named-user ACL が残ること、ヘルパーでアクセス ACL と継承 ACL を除去できることを確認。ファイル内容とモード、シンボリックリンク経由の対象外ファイルを変更しないことも検証。制限外の pytest は **37件成功**（Python 3.14.4、既存の非推奨警告1件）。サンドボックス内では ACL fixture 設定に EINVAL が出るため、その場合だけテストを skip するが、制限外では skip なしで成功した。
+
+QNAP 実機の原因が POSIX ACL であることは未確定。修正版イメージの QNAP 上のビルド・起動は引き続き未検証。非 root のビルド検証を維持しており、権限問題を root 実行で回避しない。
