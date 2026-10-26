@@ -1,0 +1,6 @@
+# Synthetic fixture. Not observed QTS settings.
+SHELL=/bin/sh
+0 3 * * 0 /example/weekly-backup --token=sample-secret
+30 2 * * * /sbin/hwclock --systohc
+0 3 * * 0 /example/scan
+*/15 * * * * /example/heartbeat

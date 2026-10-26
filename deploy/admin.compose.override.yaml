@@ -1,0 +1,11 @@
+# Merge into the EXISTING nas-a-admin project on QNAP.
+# caddy uses network_mode: service:tailscale, so attach tailscale, not caddy.
+services:
+  tailscale:
+    networks:
+      - default
+      - qsv_backend
+networks:
+  qsv_backend:
+    external: true
+    name: qsv_backend

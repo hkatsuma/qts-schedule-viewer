@@ -1,0 +1,30 @@
+services:
+  qsv:
+    build: .
+    restart: unless-stopped
+    user: "${QSV_UID:-10001}:${QSV_GID:-10001}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      QSV_TIMEZONE: ${QSV_TIMEZONE:-Asia/Tokyo}
+      QSV_REFRESH_SECONDS: ${QSV_REFRESH_SECONDS:-300}
+      QSV_CRONTAB_PATH: /host/crontab
+    volumes:
+      - type: bind
+        source: ${QSV_CRONTAB_SOURCE:-/etc/config/crontab}
+        target: /host/crontab
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      qsv_backend:
+        aliases: [qsv]
+    # Intentionally no host ports. Existing Caddy is the only entry point.
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+networks:
+  qsv_backend:
+    external: true
+    name: ${QSV_NETWORK:-qsv_backend}

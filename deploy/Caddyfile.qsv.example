@@ -1,0 +1,11 @@
+# Requires kernel networking with the Tailnet IP assigned to tailscale0.
+# Do not use with userspace networking.
+# Replace this with the existing Tailscale node's actual IP and unused port.
+# Bind to its tailnet IP explicitly. Do not bind to :8443 or 0.0.0.0.
+https://100.101.102.103:8443 {
+    bind 100.101.102.103
+    tls internal
+    reverse_proxy qsv:8000
+}
+# For trusted HTTPS, use an existing certificate / verified domain arrangement
+# matching the same tailnet-only listener, rather than introducing another node.
