@@ -6,7 +6,7 @@
 
 ファイル読取の例外本文・元の行・秘密値をログやエラー応答に含めない。タスク ID は原文の SHA-256 の一部に同一行の連番を加える。同一行を複数登録したものは根拠なく統合しない。行の移動で ID は変わらないが、式やコマンドの変更では変わる。
 
-ブラウザ向け入口は server-a の Tailnet 側リバースプロキシに限定する。QNAP に Tailscale は導入しない。QSV のバックエンドは QNAP の指定 LAN IP・専用ポートで到達可能にし、アプリの allowlist で server-a の実際の送信元 IP 以外の要求に 403 を返す。TCP 接続自体を拒否する firewall ではない。LAN IP への bind は送信元制限ではない。独自認証がないため、この制限なしに LAN に公開すると Tailnet を経由しない閲覧が可能になる。
+ブラウザ向け入口は server-a 上の QSV 専用 Tailscale ノードと Caddy の443に限定する。ホストの Tailscale と専用ノードの state/socket は共有しない。QNAP に Tailscale は導入しない。QSV のバックエンドは QNAP の指定 LAN IP・専用ポートで到達可能にし、アプリの allowlist で server-a の実際の送信元 IP 以外の要求に 403 を返す。TCP 接続自体を拒否する firewall ではない。LAN IP への bind は送信元制限ではない。独自認証がないため、この制限なしに LAN に公開すると Tailnet を経由しない閲覧が可能になる。
 
 Tailnet ACL は server-a の入口を保護するものであり、QNAP の LAN ポートへの直接接続には適用されない。QSV はプロキシを経由する前のクライアント IP を検査しない。リバースプロキシへのアクセスは Tailscale ACL で制御し、そこに独自の IP allowlist は追加しない。QSV_ALLOWED_PROXY_IPS は中継するプロキシだけを列挙し、空は全拒否、不正な IP は起動エラーとする。
 

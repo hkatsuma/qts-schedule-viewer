@@ -30,10 +30,16 @@ QNAP で chmod 修正後も非 root import が拒否され、ビルド時の読�
 
 QNAP 実機の原因が POSIX ACL であることは未確定。修正版イメージの QNAP 上のビルド・起動は引き続き未検証。非 root のビルド検証を維持しており、権限問題を root 実行で回避しない。
 
-## server-a の公開準備
+## ホスト Tailscale の8443案の検証記録（撤回済み）
 
 利用者の QNAP ログで Python 3.15 イメージのビルド・非 root import 検証・Uvicorn 起動成功を確認。server-a の curl でも QNAP の GUI / API の応答を確認済み。
 
 server-a ホストの Tailscale Running・DNS 名・IP と未使用の8443番を読み取り確認し、既存ホスト Tailscale + Caddy の専用 Compose を追加。Compose 構文は成功、公式サイトから取得した Caddy の validate は Valid configuration。adapt 後の JSON でも Tailnet IPv4 の8443番だけの listen、管理 API と HTTP リダイレクトの無効化、LAN upstream を確認した。
 
 sudo は対話認証が必要なためプロキシコンテナの起動は未実施。HTTPS 証明書取得、別の Tailnet 端末からのブラウザ表示・ACL 動作・LAN からの非到達性は起動後に確認する。
+
+## 専用 Tailscale コンテナ + Caddy 443 への変更
+
+利用者の例示に合わせ、compose.proxy.yaml を専用 Tailscale ノード + ネットワーク共有 Caddy に変更。ホスト Tailscale の8443案は撤回し、既存 tag:www-server で専用ホスト名の443へ接続する。初期登録用の deploy/.env.proxy.example と2段階のログイン・IP設定手順を追加。起動・登録・証明書取得・ブラウザ到達性は sudo と Tailnet ログインが必要なため未実施。
+
+変更後の Compose も構文・JSON 展開を検証。専用 state/socket、service:tailscale のネットワーク共有、ホストポート非公開、カーネルモード、tag:www-server、Running を待つ health 依存を確認した。Caddy validate は成功し、adapt JSON でも新ノードのサンプル Tailnet IPv4:443 のみの待受・管理API/HTTPリダイレクト無効・LAN HTTP upstream を確認した。ホストの Tailscale socket を参照しないことも確認済み。

@@ -7,8 +7,8 @@ Tailnet のブラウザ
     │ HTTPS（Tailnet のアクセス制御）
     ▼
 server-a
-    ├── 既存 Tailscale
-    └── リバースプロキシ / HTTPS 終端
+    ├── QSV 専用 Tailscale コンテナ（tag:www-server）
+    └── 同じネットワークの Caddy / 専用ホスト名の HTTPS 443
              │ LAN（接続元を制限したバックエンド通信）
              ▼
 QNAP QTS Host（Tailscale なし）
@@ -16,6 +16,8 @@ QNAP QTS Host（Tailscale なし）
              ↑ 読み取り専用 bind mount
         /etc/config/crontab 等の確認済み設定
 ```
+
+ホスト自身の Tailscale とは別に、QSV 専用ノードをコンテナで登録する。ホストポートは公開せず、専用ノード IP の443だけで Caddy が受ける。
 
 収集から画面配信までの単一アプリは QNAP 上に置き、server-a は HTTP の中継だけを担当する。収集結果の別ホストへの同期や、収集用 API の追加は不要。生の QTS 設定ファイルを server-a に共有しない。
 

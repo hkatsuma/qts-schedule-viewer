@@ -1,16 +1,18 @@
-# Install on server-a, not on QNAP. Replace all example addresses.
-# This example requires the Tailnet IP in Caddy's network namespace.
-# For userspace Tailscale, retain the existing verified Tailnet-only ingress.
-https://server-a.tailnet-name.ts.net:8443 {
-    bind 100.101.102.103
-    tls {
-        get_certificate tailscale
-    }
-    reverse_proxy http://192.168.0.1:18080 {
-        # Preserve public host: POST /api/refresh compares Origin against Host.
-        header_up Host {http.request.host}
-    }
+# Dedicated QSV Tailscale node + Caddy on server-a.
+# Use compose.proxy.yaml and proxy/Caddyfile for the runnable configuration.
+# Replace the example IP with the NEW container node's actual Tailnet IP.
+{
+	admin off
+	auto_https disable_redirects
 }
-# QSV checks TCP peer IP, not X-Forwarded-For, Forwarded or X-Real-IP.
-# Keep Uvicorn --no-proxy-headers. No backend token/password/TLS required
-# on the trusted home LAN. Tailnet users are governed by the existing ACL.
+https://qsv.tailnet-name.ts.net {
+	bind 100.101.102.103
+	tls {
+		get_certificate tailscale
+	}
+	reverse_proxy http://192.168.0.1:18080 {
+		header_up Host {http.request.host}
+	}
+}
+# No host ports. Caddy shares the Tailscale container's network and socket.
+# tag:www-server uses existing grants (admins + tag:client, TCP 443).

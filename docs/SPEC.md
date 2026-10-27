@@ -22,7 +22,7 @@ QNAP QTSでは、cron、電源管理、ストレージ管理、バックアッ�
 - NAS：QNAP
 - OS：QTS（QuTS heroは当面対象外）
 - コンテナ実行環境：QNAP Container Station / Docker（収集・API・Web UI）
-- Tailnet 公開ホスト：server-a（既存 Tailscale とリバースプロキシ）
+- Tailnet 公開ホスト：server-a（QSV 専用 Tailscale コンテナと Caddy）
 - QNAP 上では Tailscale は動かさない
 - 公開範囲：Tailscale Tailnet内のみ
 - 利用端末：PC、スマートフォンのWebブラウザ
@@ -39,7 +39,7 @@ QTSの具体的なバージョン、CPUアーキテクチャ、各QPKGのバー�
 4. Docker Composeで構成を管理できるようにする。
 5. スケジュール収集処理と画面表示処理を分離する。
 6. QTSのバージョン差やQPKGの有無に対応できる拡張可能な構造にする。
-7. Tailnet内への公開は、server-a の既存 Tailscale とリバースプロキシを利用し、LAN 経由で QNAP 上のアプリへ転送する。
+7. Tailnet内への公開は、server-a 上の QSV 専用 Tailscale コンテナと Caddy を利用し、LAN 経由で QNAP 上のアプリへ転送する。
 
 ---
 
@@ -357,7 +357,7 @@ QNAP QTS Host
                          │
                   server-a
                     ├── リバースプロキシ / HTTPS 終端
-                    └── 既存 Tailscale
+                    └── QSV 専用 Tailscale コンテナ
                               │
                             Tailnet
 ```
@@ -398,14 +398,14 @@ QTSの管理設定には、スケジュールとは無関係の機密情報が�
 
 Web画面はTailnet内からのみ利用可能とする。
 
-QNAP では Tailscale を動かさない。Tailnet に参加済みの server-a にリバースプロキシを配置し、QNAP 上の QSV へ LAN 経由で転送する。既存のプロキシ製品・実行形態・証明書の運用を確認し、それに合わせる。
+QNAP では Tailscale を動かさない。server-a に QSV 専用 Tailscale ノードと Caddy をコンテナで配置し、QNAP 上の QSV へ LAN 経由で転送する。既存のプロキシ製品・実行形態・証明書の運用を確認し、それに合わせる。
 
-新たなTailscaleインスタンスやVPN構成を安易に追加しない。
+既存 nas-a-admin の方式を踏襲し、QSV 専用ノードを1つ登録する。Caddy はそのネットワークと socket を共有し、専用ホスト名の443で受ける。ホスト自身の Tailscale の8443は使用しない。
 
 ### 6.2 ネットワーク要件
 
 - インターネットへの一般公開は行わない
-- server-a の既存 Tailscale 構成を利用する
+- QSV 専用ノードに既存 tag:www-server を付与し、管理者と tag:client の TCP 443 を既存 grants で許可する
 - server-a のリバースプロキシで Tailnet 向け入口を提供する
 - QNAP のバックエンドは指定 LAN IP・専用ポートを使い、server-a の実際の送信元のみ許可する
 - QSV_ALLOWED_PROXY_IPS で中継するプロキシの実接続元 IP を指定し、アプリ層で許可外の要求を HTTP 403 とする

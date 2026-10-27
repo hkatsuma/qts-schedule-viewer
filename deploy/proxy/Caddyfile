@@ -3,7 +3,7 @@
 	auto_https disable_redirects
 }
 
-https://{$QSV_PUBLIC_HOST}:{$QSV_PUBLIC_PORT} {
+https://{$QSV_PUBLIC_HOST}:443 {
 	bind {$QSV_TAILNET_IP}
 	tls {
 		get_certificate tailscale

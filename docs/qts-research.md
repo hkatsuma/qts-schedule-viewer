@@ -38,3 +38,7 @@ QNAP 上で `uname -m` と `docker version`、`docker compose version` を参照
 公開方式については server-a のリバースプロキシと Tailscale の実行形態、QNAP への LAN 到達性、実際の送信元 IP、バックエンドの実接続元 IP allowlist の有効性を確認する。利用者の方針として、LAN は信頼するホームネットワークとし、バックエンドは HTTP + プロキシ IP 制限のみ、プロキシ入口は Tailscale ACL で制御する。別ホスト間の経路なので Docker の同名ネットワークによる接続は採用しない。
 
 本稿に記した crontab のパスは SPEC 由来、既存の公開構成はローカルファイル観測由来。QTS 内部 API / DB に関する推測は採用していない。
+
+## 公開構成の確定
+
+利用者の例示どおり、server-a 上に QSV 専用 Tailscale コンテナと Caddy を置き、専用ノード名の443で受ける。ホスト Tailscale の8443を使う前案は撤回。既存 tag:www-server の grants（管理者と tag:client）を流用する。新ノードの IP・DNS 名・証明書取得・NAT 後の LAN 接続元は登録後に確認する。

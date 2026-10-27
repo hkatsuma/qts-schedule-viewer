@@ -8,12 +8,12 @@
 ```
 
 - QNAP：Container Station / Docker で収集・キャッシュ・API・Web UI を同じコンテナに置く。Tailscale は動かさない。
-- server-a：既存の Tailscale とリバースプロキシを使い、ブラウザ向け HTTPS を終端する。ここへのアクセスは **Tailscale ACL** で制御し、プロキシ側に独自の IP allowlist は追加しない。
+- server-a：QSV 専用の Tailscale コンテナと Caddy を動かし、専用ホスト名の HTTPS 443 で終端する。ホスト自身の既存 Tailscale とは別ノードとして参加する。ここへのアクセスは **Tailscale ACL** で制御し、プロキシ側に独自の IP allowlist は追加しない。
 - QSV：バックエンドに直接接続する **中継プロキシの IP だけ** を allowlist で制限する。Tailnet の各クライアント IP は検査しない。
 - ホーム LAN は信頼する。バックエンドは HTTP + プロキシ IP 制限とし、パスワード・トークン等の追加認証情報は使わない。
 - 開発 PC：QNAP のディレクトリをマウントして編集する。コンテナ実行ホストではない。
 
-新しい Tailscale ノードや設定ファイルの server-a への共有は不要。同名 Docker bridge network で別ホストは接続できないため、QNAP の LAN IP・専用ポートを upstream にする。
+既存 nas-a-admin の方式に合わせ、QSV 専用 Tailnet ノードを1つ登録する。QNAP の生設定ファイルの server-a への共有は不要。同名 Docker bridge network で別ホストは接続できないため、QNAP の LAN IP・専用ポートを upstream にする。
 
 ## QNAP 上での設定・起動
 
@@ -63,11 +63,11 @@ Docker と firewall の経路については [Docker のポート公開](https:/
 `deploy/Caddyfile.qsv.example` は Caddy の設定例。実際のプロキシ製品・配置・Tailscale モード・IP・ドメイン・証明書はまだ未確認であり、既存方式に合わせる。
 
 1. upstream を `http://<QNAP の LAN IP>:<専用ポート>` にする。Docker サービス名 `qsv:8000` や server-a 自身の localhost には向けない。
-2. 既存の Tailnet 専用入口にサイトを追加し、Tailscale ACL で利用者を制限する。独自の IP allowlist や追加の認証情報はプロキシに設けない。Funnel は使わない。
-3. Tailnet IP へ直接 bind する設定例は、その IP がプロキシのネットワーク名前空間に存在する場合に使う。userspace モードなら既存の検証済み Tailnet 受信方式に合わせる。
-4. ブラウザ向け HTTPS は既存の証明書運用に合わせる。例の `get_certificate tailscale` は既存構成同様に Tailscale socket へのアクセスが必要。
+2. QSV 専用ノードの443番にサイトを追加し、既存 tag:www-server の grants で利用者を制限する。独自の IP allowlist や追加の認証情報はプロキシに設けない。Funnel は使わない。
+3. Tailscale は TS_USERSPACE=false のカーネルモードとし、Caddy は network_mode: service:tailscale でネットワークを共有する。新ノードの Tailnet IPv4 だけに bind する。
+4. ブラウザ向け HTTPS は既存の証明書運用に合わせる。例の `get_certificate tailscale` は専用 Tailscale コンテナの socket へのアクセスが必要。
 5. 元の Host を保持する。手動再取得の Origin 検査に必要。現状の UI はルート `/` 配下用なので、専用ドメインまたは専用ポートを使う。`/qsv/` のようなサブパス配置は未対応。
-6. 設定を検証してから既存の手順で reload する。QSV の導入のために既存 Tailscale インスタンスを増やさない。
+6. 専用 Compose だけを起動・更新する。ホスト自身の Tailscale や既存 nas-a-admin の state・設定は共有も変更もしない。
 
 Caddy の参考：[reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)。
 
@@ -111,28 +111,57 @@ docker compose logs --tail=50 qsv
 
 ## server-a での今回の公開設定
 
-2026-10-26 にホスト Tailscale の Running 状態と DNS 名 `server-a.tailnet-name.ts.net`、IPv4 `100.101.102.103` を確認。ホストの8443番は未使用。QNAP `http://192.168.0.1:18080/` から HTTP 200 を確認した。Docker は sudo 認証が必要で、ここからの起動は未実施。
+構成は `専用 Tailscale ノード(qsv) + Caddy :443 → LAN HTTP → QNAP :18080`。ホスト server-a の8443を使う前案は撤回した。ホスト側の443/8443を Docker で公開しないので既存サービスと競合しない。
 
-`deploy/compose.proxy.yaml` は既存の **ホスト Tailscale** を使う Caddy だけの構成。起動場所は server-a。QNAP 用のルート compose.yaml とは別プロジェクトであり、アプリは再起動しない。
+### 1. 専用ノードの初回ログイン
 
-```sh
-# server-a 上、本リポジトリのディレクトリで実行
-sudo docker compose -f deploy/compose.proxy.yaml run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile
-sudo docker compose -f deploy/compose.proxy.yaml up -d
-sudo docker compose -f deploy/compose.proxy.yaml logs --tail=50 proxy
-```
-
-ブラウザで `https://server-a.tailnet-name.ts.net:8443/` を開く。利用端末は Tailnet に接続し、既存 Tailscale ACL が server-a の TCP 8443 を許可している必要がある。ACL の設定自体はこの Compose から変更しない。
-
-Caddy は host network を使い、Tailnet IPv4 の8443だけに bind する。HTTPリダイレクト用の80番と管理APIは無効化。証明書は既存 tailscaled の socket 経由で取得し、Tailnet の HTTPS 設定が有効であることが前提。LAN upstream の実送信元は server-a のホスト側 LAN IP になるため、既に curl で許可を確認した接続元と同じ経路を使える。
-
-設定値は `QSV_PUBLIC_HOST`、`QSV_PUBLIC_PORT`、`QSV_TAILNET_IP`、`QSV_UPSTREAM` で上書きできる。既定値は上記の実測環境用。socket は証明書取得に使うため、共有先はこのプロキシだけとし、ほかのコンテナに共有しない。
-
-起動後、同じホストからの確認例：
+以下は server-a 上、本リポジトリのディレクトリで実行する。`.env.proxy` は QNAP アプリ用の `.env` と別ファイルで、Git 管理対象外。
 
 ```sh
-curl -fsS -o /dev/null -w '%{http_code}\n' https://server-a.tailnet-name.ts.net:8443/
-curl -fsS -X POST -H 'Origin: https://server-a.tailnet-name.ts.net:8443' https://server-a.tailnet-name.ts.net:8443/api/refresh
+cp deploy/.env.proxy.example deploy/.env.proxy
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml config --quiet
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml up -d tailscale
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml logs --tail=100 tailscale
 ```
 
-最終確認は別の許可済み Tailnet 端末のブラウザで行う。LAN だけの端末から `https://192.168.0.2:8443/` へ接続できないことも確認する。設定変更の反映は `sudo docker compose -f deploy/compose.proxy.yaml restart proxy`。停止は同じファイルを指定して `down` とし、QNAP の QSV や既存のほかのプロキシは停止しない。
+ログに表示される認証 URL をブラウザで開き、`tag:www-server` を付与できる管理者としてログインする。必要なら管理画面で端末を承認する。初回ログイン待ちの間は unhealthy でもよい。認証 URL を公開しない。初回だけブラウザで登録し、その後は named volume の state と TS_AUTH_ONCE=true で同じノードを使う。リポジトリに認証キーや既存サービスの state をコピーする必要はない。
+
+### 2. 新ノードの IP と DNS 名を設定
+
+```sh
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml exec tailscale tailscale ip -4
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml exec tailscale tailscale status --json
+```
+
+`deploy/.env.proxy` の QSV_TAILNET_IP を **この新ノードの IPv4** に置き換える。ホスト server-a の IP は使わない。初期値127.0.0.1は安全な初期状態として loopback に限定するもので、このままでは Tailnet から接続できない。
+
+Self.DNSName が `qsv.tailnet-name.ts.net.` であることを確認し、違う場合は QSV_PUBLIC_HOST を実際の値へ変更する（末尾のドットは除去）。同名ノードがあると接尾辞が付く場合がある。QSV_UPSTREAM の既定値は `192.168.0.1:18080`。
+
+### 3. Caddy の検証・起動
+
+```sh
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml up -d
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml logs --tail=50 proxy
+```
+
+初期設定のドメインで登録された場合の URL は **https://qsv.tailnet-name.ts.net/**。ポート番号の指定は不要。証明書は専用 tailscaled の socket から取得するため、Tailnet の HTTPS 証明書機能が有効であることが前提。ホストの socket は共有しない。
+
+Caddy は TS_USERSPACE=false の Tailscale とネットワークを共有し、新ノードの IPv4:443 のみを listen する。HTTP リダイレクト用80番と管理APIは無効。ホストのポートマッピングや Funnel は使わない。Tailscale は /dev/net/tun と NET_ADMIN、Caddy は低ポート用 NET_BIND_SERVICE を使用する。QNAP アプリの権限は変更しない。
+
+### 4. 既存 grants とバックエンド IP 制限
+
+提示された既存ポリシーでは、tag:www-server の TCP 443 は **group:admins と tag:client** の両方から許可される。この範囲でよければ grants・tagOwners の追加変更は不要。管理者だけに絞る場合には専用タグと grant が必要だが、現在の構成では追加しない。ホストの8443を許可するルールは不要。
+
+QNAP から見た LAN 接続元は通常 Docker の NAT 後の server-a の LAN IP（観測環境は192.168.0.2）になる。Tailnet の新ノード IP を QSV_ALLOWED_PROXY_IPS に指定しない。経路変更や NAT の有無は実測する。403 の場合は proxy コンテナの環境から upstream への通信を確認し、QNAP の allowlist が実際の LAN 送信元を許可しているか確認する。
+
+既存プロキシを起動済みの場合、`up -d` で proxy は新しいネットワークへ再作成される。旧ホスト8443リスナーが消えたことを確認する。Compose の名前 qsv-proxy は引き継ぐが、ホスト Tailscale や他サービスには影響しない。
+
+### 運用
+
+- 設定変更後は同じ `--env-file` と `-f` を付けた `up -d` で再作成する。
+- Tailscale を再作成した場合は、ネットワーク名前空間を共有する Caddy も `up -d --force-recreate proxy` で再作成する。
+- 停止は同じオプションの `down`。**`down -v` は state と証明書を消すので使用しない**。state を削除すると新しいノードとして再登録される。
+- 最終確認は別の許可済み Tailnet 端末のブラウザで行い、LAN IP の443/8443からアクセスできないことも確認する。
+
+Docker 起動は sudo の対話認証が必要なため、この環境からは未実施。Compose / Caddy の構成検証と実際のノード登録・ブラウザ到達性は区別する。

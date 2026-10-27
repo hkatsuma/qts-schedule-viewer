@@ -1,17 +1,43 @@
-# Run on server-a. Uses the existing HOST tailscaled, no new VPN node.
+# Run on server-a. Dedicated QSV Tailnet node, no host ports.
 name: qsv-proxy
 services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: ${QSV_TS_HOSTNAME:-qsv}
+    restart: unless-stopped
+    environment:
+      TS_HOSTNAME: ${QSV_TS_HOSTNAME:-qsv}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_USERSPACE: "false"
+      TS_AUTH_ONCE: "true"
+      TS_EXTRA_ARGS: --advertise-tags=tag:www-server
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      - tailscale_socket:/var/run/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN]
+    healthcheck:
+      test: [CMD-SHELL, "tailscale status --json | grep -Eq '\"BackendState\"[[:space:]]*:[[:space:]]*\"Running\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
   proxy:
     image: caddy:2
-    network_mode: host
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
     security_opt: [no-new-privileges:true]
     environment:
-      QSV_PUBLIC_HOST: ${QSV_PUBLIC_HOST:-server-a.tailnet-name.ts.net}
-      QSV_PUBLIC_PORT: ${QSV_PUBLIC_PORT:-8443}
-      QSV_TAILNET_IP: ${QSV_TAILNET_IP:-100.101.102.103}
+      QSV_PUBLIC_HOST: ${QSV_PUBLIC_HOST:-qsv.tailnet-name.ts.net}
+      # Initially loopback-only. Set to the NEW node's Tailnet IPv4 after login.
+      QSV_TAILNET_IP: ${QSV_TAILNET_IP:-127.0.0.1}
       QSV_UPSTREAM: ${QSV_UPSTREAM:-192.168.0.1:18080}
     volumes:
       - type: bind
@@ -20,14 +46,11 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - type: bind
-        source: /var/run/tailscale/tailscaled.sock
-        target: /var/run/tailscale/tailscaled.sock
-        read_only: true
-        bind:
-          create_host_path: false
+      - tailscale_socket:/var/run/tailscale:ro
       - caddy_data:/data
       - caddy_config:/config
 volumes:
+  tailscale_state:
+  tailscale_socket:
   caddy_data:
   caddy_config:
