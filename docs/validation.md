@@ -23,9 +23,9 @@ API テストは開発環境のサンドボックス外で実行している。�
 | QNAP の QSV | 利用者のログで Python 3.15 イメージのビルド、非 root の import・静的ファイル読み取り、Uvicorn 起動成功を確認 |
 | LAN バックエンド | server-a の curl で GUI / API の応答を確認。cron の全設定との突き合わせは未実施 |
 | 依存パッケージ | Python 3.15 / CPython / manylinux2014 x86_64 向け wheel の取得・依存解決を確認。他 CPU の配布物・動作は未検証 |
-| 専用プロキシ Compose | 構文・JSON 展開を検証。専用 state/socket、service:tailscale、ホストポート非公開、カーネルモード、tag:www-server、health 依存を確認 |
+| 専用プロキシ Compose | 構文・JSON 展開を検証。専用 state/socket、service:tailscale、ホストポート非公開、カーネルモード、tag:www-server、health 依存を確認。deploy/proxy での通常の compose コマンドで、設定済み環境変数・プロジェクト名・ボリューム・bind 元を含む展開結果を確認 |
 | Caddy | validate 成功。adapt JSON で専用 Tailnet IPv4:443 の待受、管理 API / HTTP リダイレクト無効、LAN HTTP upstream を確認 |
-| QSV 専用ノード | 利用者が初回ログイン完了。Tailnet Lock の署名待ち |
+| QSV 専用ノード | 利用者による稼働確認あり。ホスト再起動後の復旧は未確認 |
 
 開発 PC の Docker daemon は操作権限がないため、コンテナの起動確認は利用者から共有された QNAP のログ・応答に基づく。ホスト側の POSIX ACL の実値は未確認。
 
@@ -34,7 +34,7 @@ API テストは開発環境のサンドボックス外で実行している。�
 - QTS バージョン、CPU、Container Station / QPKG バージョンと収集元の詳細
 - cron の表示と QTS の全設定との一致、cron 以外の Collector
 - 実機の許可外 LAN 端末に対する403、IPv6・別 NIC 経路
-- 専用ノードの Tailnet Lock 署名、確定した DNS 名・IP、Caddy の証明書取得
+- 専用ノードの確定した DNS 名・IP、証明書取得の個別ログ
 - プロキシコンテナの実際の LAN 送信元 IP
 - 別の Tailnet 端末のブラウザでの表示・操作・ACL、LAN からの非到達性
 - NAS と server-a の再起動後の復旧

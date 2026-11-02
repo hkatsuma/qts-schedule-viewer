@@ -113,13 +113,15 @@ docker compose logs --tail=50 qsv
 
 ### 1. 専用ノードの初回ログイン
 
-以下は server-a 上、本リポジトリのディレクトリで実行する。`.env.proxy` は QNAP アプリ用の `.env` と別ファイルで、Git 管理対象外。
+以下は server-a 上、本リポジトリの `deploy/proxy` ディレクトリで実行する。Compose は同じディレクトリの `compose.yaml` と `.env` を自動的に読み込む。プロジェクト名は `qsv-proxy` に固定され、state・証明書はこの名前の Docker volume に保存する。QNAP アプリ用のルートディレクトリの `.env` とは別設定で、Git 管理対象外。
 
 ```sh
-cp deploy/.env.proxy.example deploy/.env.proxy
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml config --quiet
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml up -d tailscale
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml logs --tail=100 tailscale
+cd deploy/proxy
+# 初回だけ実行。設定済みの .env は上書きしない。
+cp -n .env.example .env
+sudo docker compose config --quiet
+sudo docker compose up -d tailscale
+sudo docker compose logs --tail=100 tailscale
 ```
 
 ログに表示される認証 URL をブラウザで開き、`tag:www-server` を付与できる管理者としてログインする。必要なら管理画面で端末を承認する。初回ログイン待ちの間は unhealthy でもよい。認証 URL を公開しない。初回だけブラウザで登録し、その後は named volume の state と TS_AUTH_ONCE=true で同じノードを使う。リポジトリに認証キーや既存サービスの state をコピーする必要はない。
@@ -129,7 +131,7 @@ sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml lo
 Tailnet Lock が有効で QSV ノードに Locked out と表示される場合は、ログインに加えてノードの署名が必要。QSV コンテナで次を実行する。
 
 ```sh
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml exec tailscale tailscale lock status
+sudo docker compose exec tailscale tailscale lock status
 ```
 
 表示された `tailscale lock sign nodekey:... tlpub:...` コマンドを、**信頼済み署名鍵を持つ既存の署名端末**で実行する。端末の権限設定に応じて sudo を使う。QSV コンテナ自身で署名するのではなく、Tailnet Lock の署名権限を持つ端末で実行する。単に署名済みで Tailnet に参加しているだけの端末には署名権限がない場合がある。
@@ -141,20 +143,20 @@ sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml ex
 ### 3. 新ノードの IP と DNS 名を設定
 
 ```sh
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml exec tailscale tailscale ip -4
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml exec tailscale tailscale status --json
+sudo docker compose exec tailscale tailscale ip -4
+sudo docker compose exec tailscale tailscale status --json
 ```
 
-`deploy/.env.proxy` の QSV_TAILNET_IP を **この新ノードの IPv4** に置き換える。ホスト server-a の IP は使わない。初期値127.0.0.1は安全な初期状態として loopback に限定するもので、このままでは Tailnet から接続できない。
+`deploy/proxy/.env`（このディレクトリでは `.env`）の QSV_TAILNET_IP を **この新ノードの IPv4** に置き換える。ホスト server-a の IP は使わない。初期値127.0.0.1は安全な初期状態として loopback に限定するもので、このままでは Tailnet から接続できない。
 
 Self.DNSName が `qsv.tailnet-name.ts.net.` であることを確認し、違う場合は QSV_PUBLIC_HOST を実際の値へ変更する（末尾のドットは除去）。同名ノードがあると接尾辞が付く場合がある。QSV_UPSTREAM の既定値は `192.168.0.1:18080`。
 
 ### 4. Caddy の検証・起動
 
 ```sh
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml up -d
-sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml logs --tail=50 proxy
+sudo docker compose run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile
+sudo docker compose up -d
+sudo docker compose logs --tail=50 proxy
 ```
 
 初期設定のドメインで登録された場合の URL は **https://qsv.tailnet-name.ts.net/**。ポート番号の指定は不要。証明書は専用 tailscaled の socket から取得するため、Tailnet の HTTPS 証明書機能が有効であることが前提。ホストの socket は共有しない。
@@ -169,9 +171,29 @@ QNAP から見た LAN 接続元は通常 Docker の NAT 後の server-a の LAN 
 
 ### 運用
 
-- 設定変更後は同じ `--env-file` と `-f` を付けた `up -d` で再作成する。
+- 設定変更後はこのディレクトリで `sudo docker compose up -d` により再作成する。
 - Tailscale を再作成した場合は、ネットワーク名前空間を共有する Caddy も `up -d --force-recreate proxy` で再作成する。
-- 停止は同じオプションの `down`。**`down -v` は state と証明書を消すので使用しない**。state を削除すると新しいノードとして再登録される。
+- 停止は `sudo docker compose down`。**`down -v` は state と証明書を消すので使用しない**。state を削除すると新しいノードとして再登録される。
 - 最終確認は別の許可済み Tailnet 端末のブラウザで行い、LAN IP の443からアクセスできないことも確認する。
 
 検証状況は [validation.md](validation.md) を参照。
+
+## 手動再起動と自動起動
+
+QNAP はリポジトリのルート、server-a は `deploy/proxy` を作業ディレクトリにする。どちらも以下のコマンドで停止・再作成できる。
+
+```sh
+sudo docker compose down && sudo docker compose up -d
+```
+
+通常の down は named volume を保持する。`down -v` は使わない。QSV は起動時に再収集し、プロキシは保存済みの Tailscale state と証明書を使う。
+
+全サービスの restart policy は unless-stopped。Docker / Container Station が自動起動し、コンテナが手動停止されておらず、必要なファイル・ネットワークが利用できることがホスト再起動後の復旧条件になる。Compose の health 待機は compose up 時の制御で、Docker daemon の再起動時の準備完了までは保証しない。
+
+### 共有フォルダへの依存
+
+共有フォルダ上の Caddyfile を bind mount する配置では、コンテナの作成・起動時に共有フォルダが必要。起動後に共有元への通信が失われた場合も、ファイル読み取りが失敗・待機したり、再作成・設定の再読込ができなくなったりする可能性がある。Caddy が読み込み済みの設定で動き続ける場合もあるが、継続動作は保証しない。
+
+起動時のマウント待機は起動レースの防止にはなるが、稼働中の切断対策ではない。この構成では追加のマウント待機・切断監視は設けない。
+
+共有マウントへの依存をなくす場合は、server-a のローカルディスク上の専用ディレクトリへ `compose.yaml`・`Caddyfile`・設定済み `.env` を配置し、そこで通常の compose コマンドを実行する。アプリケーションのソース全体は不要。プロジェクト名 qsv-proxy と Docker daemon を維持すれば同じ named volume を使える。設定の更新時にはローカル配置にも反映する必要がある。

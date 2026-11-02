@@ -41,7 +41,7 @@ services:
       QSV_UPSTREAM: ${QSV_UPSTREAM:-192.168.0.1:18080}
     volumes:
       - type: bind
-        source: ./proxy/Caddyfile
+        source: ./Caddyfile
         target: /etc/caddy/Caddyfile
         read_only: true
         bind:

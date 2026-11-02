@@ -5,4 +5,4 @@ __pycache__
 .pytest_cache
 tests
 docs
-deploy/.env.proxy
+deploy/proxy/.env

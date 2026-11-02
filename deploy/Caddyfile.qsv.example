@@ -1,5 +1,5 @@
 # Dedicated QSV Tailscale node + Caddy on server-a.
-# Use compose.proxy.yaml and proxy/Caddyfile for the runnable configuration.
+# Use deploy/proxy/compose.yaml and proxy/Caddyfile for the runnable configuration.
 # Replace the example IP with the NEW container node's actual Tailnet IP.
 {
 	admin off

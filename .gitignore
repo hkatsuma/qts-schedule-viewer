@@ -220,4 +220,4 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Local QSV proxy deployment settings
-deploy/.env.proxy
+deploy/proxy/.env

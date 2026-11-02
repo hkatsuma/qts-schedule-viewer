@@ -57,6 +57,14 @@ QSV_CRONTAB_PATH=./samples/crontab QSV_TIMEZONE=Asia/Tokyo QSV_ALLOWED_PROXY_IPS
 - [Collector と対応形式](docs/collectors.md)
 - [検証結果と未検証項目](docs/validation.md)
 
-server-a での公開用に [deploy/compose.proxy.yaml](deploy/compose.proxy.yaml) を用意しています。専用 Tailscale ノードと Caddy を使う起動方法と公開 URL は [導入手順の公開設定](docs/deployment.md#server-a-の公開設定) を参照してください。
+server-a での公開用に [deploy/proxy/compose.yaml](deploy/proxy/compose.yaml) を用意しています。専用 Tailscale ノードと Caddy を使う起動方法と公開 URL は [導入手順の公開設定](docs/deployment.md#server-a-の公開設定) を参照してください。
 
 公開先は専用ノードの `https://qsv.tailnet-name.ts.net/`（実際の登録 DNS 名を確認）。既存の `tag:www-server` を使用するため、提示された grants では管理者と `tag:client` から443へ接続できます。Tailnet Lock が有効なら、初回ログイン後に既存の署名端末で QSV ノードを署名してください。
+
+実行ディレクトリは、QNAP がリポジトリのルート、server-a が `deploy/proxy` です。各ディレクトリで次の共通コマンドを使えます。
+
+```sh
+sudo docker compose down && sudo docker compose up -d
+```
+
+`down -v` は Tailscale state や証明書を消すため使用しません。共有マウントへの依存とローカル配置の選択肢は [導入手順](docs/deployment.md#共有フォルダへの依存) を参照してください。
