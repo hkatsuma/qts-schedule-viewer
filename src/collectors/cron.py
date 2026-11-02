@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from src.models import Collection, Schedule, Source, Task
-from src.services.schedules import describe, next_runs, validate
+from src.services.schedules import describe, next_runs, validate, runs_per_active_day
 
 MAX_BYTES = 1024 * 1024
 MAX_TASKS = 500
@@ -70,6 +70,7 @@ class CronCollector:
                 validate(expression)
                 if env_timezone:
                     raise ValueError('TZ / CRON_TZ 指定があるため時刻計算を停止しました。実機調査が必要です')
+                task.runs_per_active_day = runs_per_active_day(expression)
                 task.next_runs = next_runs(expression, now)
                 if not task.next_runs:
                     task.warnings.append('8年以内の実行予定を算出できません')

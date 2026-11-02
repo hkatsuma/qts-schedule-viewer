@@ -5,6 +5,7 @@ import os
 from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit
 
@@ -12,11 +13,19 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from src.collectors.cron import CronCollector
+from src.models import Task
 from src.services.collection import CollectionService
 from src.services.access import IPAllowlist
-from src.services.schedules import occurrences, next_runs
+from src.services.schedules import occurrences, next_runs, month_summary
 
 WEB = Path(__file__).parent / 'web'
+Frequency = Literal['all', 'nonfrequent', 'frequent']
+FREQUENT_RUNS_PER_DAY = 24
+
+
+def frequency_matches(task: Task, frequency: Frequency) -> bool:
+    frequent = task.runs_per_active_day is not None and task.runs_per_active_day >= FREQUENT_RUNS_PER_DAY
+    return frequency == 'all' or (frequency == 'frequent' and frequent) or (frequency == 'nonfrequent' and not frequent)
 
 
 def create_app(path: Path | None = None, timezone: str | None = None,
@@ -56,11 +65,13 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         return response
 
-    def tasks(q: str = '', category: str = '', provider: str = '', enabled: str = ''):
+    def tasks(q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all'):
         result = []
         for collection in service.results.values():
             for stored in collection.tasks:
                 task = stored.model_copy(deep=True)
+                if not frequency_matches(task, frequency):
+                    continue
                 if task.enabled and task.collection_status == 'ok':
                     task.next_runs = next_runs(task.schedule.expression, datetime.now(ZoneInfo(zone)))
                 if category and task.category != category or provider and task.provider != provider:
@@ -77,8 +88,12 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         return {'status': 'ok'}
 
     @app.get('/api/schedules')
-    def schedules(q: str = Query('', max_length=200), category: str = '', provider: str = '', enabled: str = ''):
-        return {'timezone': zone, 'tasks': tasks(q, category, provider, enabled),
+    def schedules(q: str = Query('', max_length=200), category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all'):
+        matching = tasks(q, category, provider, enabled)
+        visible = [task for task in matching if frequency_matches(task, frequency)]
+        return {'timezone': zone, 'tasks': visible,
+                'hidden_by_frequency': len(matching) - len(visible),
+                'frequent_runs_per_day': FREQUENT_RUNS_PER_DAY,
                 'collections': list(service.results.values())}
 
     @app.post('/api/refresh')
@@ -91,7 +106,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         return {'status': 'ok'}
 
     @app.get('/api/timeline')
-    def timeline(start: date, q: str = '', category: str = '', provider: str = '', enabled: str = ''):
+    def timeline(start: date, q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all'):
         if not 1970 <= start.year <= 2199:
             raise HTTPException(422, '表示日は1970年から2199年の範囲で指定してください')
         begin = datetime.combine(start, time(), ZoneInfo(zone))
@@ -99,7 +114,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         events = []
         cache = {}
         limited = False
-        for task in tasks(q, category, provider, enabled):
+        for task in tasks(q, category, provider, enabled, frequency):
             if task.enabled is not True or task.collection_status != 'ok':
                 continue
             expression = task.schedule.expression
@@ -114,12 +129,26 @@ def create_app(path: Path | None = None, timezone: str | None = None,
                 break
         return {'start': begin, 'end': end, 'events': events, 'truncated': limited, 'timezone': zone}
 
+    @app.get('/api/month')
+    def month(month: date, q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all'):
+        if not 1970 <= month.year <= 2199:
+            raise HTTPException(422, '表示月は1970年から2199年の範囲で指定してください')
+        begin = datetime.combine(month.replace(day=1), time(), ZoneInfo(zone))
+        end = (begin.replace(day=28) + timedelta(days=4)).replace(day=1)
+        days = []
+        for task in tasks(q, category, provider, enabled, frequency):
+            if task.enabled is not True or task.collection_status != 'ok':
+                continue
+            for summary in month_summary(task.schedule.expression, begin, end):
+                days.append({**summary, 'task_id': task.id, 'name': task.name, 'category': task.category})
+        return {'start': begin, 'end': end, 'days': days, 'timezone': zone}
+
     @app.get('/api/export.csv')
-    def export(q: str = '', category: str = '', provider: str = '', enabled: str = ''):
+    def export(q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all'):
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['名前', 'カテゴリ', '提供元', '有効状態', 'cron式', 'タイムゾーン', '次回実行予定', '設定場所', '取得元', '取得状態', 'コマンド（機密保護）'])
-        for task in tasks(q, category, provider, enabled):
+        for task in tasks(q, category, provider, enabled, frequency):
             row = [task.name, task.category, task.provider, str(task.enabled), task.schedule.expression,
                    zone, task.next_runs[0].isoformat() if task.next_runs else '', task.configuration_location,
                    task.source.location, task.collection_status, task.command]

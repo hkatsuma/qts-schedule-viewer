@@ -26,6 +26,7 @@ class Task(BaseModel):
     schedule: Schedule
     next_runs: list[datetime] = Field(default_factory=list)
     duration_seconds: int | None = None
+    runs_per_active_day: int | None = None
     source: Source
     command: str
     configuration_location: str = 'QTS / cron（管理画面の有無は実機で確認）'

@@ -71,3 +71,40 @@ def occurrences(expression: str, start: datetime, end: datetime, zone: str) -> l
     except (ValueError, OverflowError):
         pass
     return [result[key] for key in sorted(result)]
+
+
+@lru_cache(maxsize=512)
+def runs_per_active_day(expression: str) -> int:
+    """Nominal count on a matching 24-hour day; date constraints stay intact."""
+    validate(expression)
+    fields = croniter.expand(expression)[0]
+    minutes = 60 if fields[0] == ['*'] else len(fields[0])
+    hours = 24 if fields[1] == ['*'] else len(fields[1])
+    return minutes * hours
+
+
+@lru_cache(maxsize=32)
+def month_summary(expression: str, start: datetime, end: datetime) -> list[dict]:
+    """One row per active date, without expanding dense jobs into month events."""
+    validate(expression)
+    fields = croniter.expand(expression)[0]
+    minutes = list(range(60)) if fields[0] == ['*'] else fields[0]
+    hours = list(range(24)) if fields[1] == ['*'] else fields[1]
+    result = []
+    day = start
+    while day < end:
+        following = day + timedelta(days=1)
+        first = day.replace(hour=min(hours), minute=min(minutes))
+        if croniter.match(expression, first.replace(tzinfo=None)):
+            if day.utcoffset() == following.utcoffset():
+                count = len(minutes) * len(hours)
+            else:
+                # Exact real instants only on offset-transition dates.
+                runs = occurrences(expression, day, following, str(day.tzinfo))
+                count = len(runs)
+                if runs:
+                    first = runs[0]
+            if count:
+                result.append({'day': day.date().isoformat(), 'count': count, 'first_run': first})
+        day = following
+    return result
