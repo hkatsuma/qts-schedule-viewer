@@ -71,8 +71,6 @@ Docker と firewall の経路については [Docker のポート公開](https:/
 
 Caddy の参考：[reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)。
 
-旧 `deploy/admin.compose.override.yaml` は同一ホスト用だったため、現在は無効な移行案内として `services: {}` のみを残している。両ホストの起動ファイルへ組み込む必要はない。
-
 ## 実機での検証
 
 1. QNAP の bind IP・ポート・マウント・権限・タイムゾーンを確認する。
@@ -83,7 +81,7 @@ Caddy の参考：[reverse_proxy](https://caddyserver.com/docs/caddyfile/directi
 6. QTS の設定と収集結果を照合し、設定変更後の再取得も確認する。
 7. 両ホストをそれぞれ再起動し、QSV・proxy・Tailscale・設定値が復旧することを確認する。
 
-LAN 区間は HTTP であり Tailscale による暗号化の対象外。信頼するホーム LAN と許可したプロキシを前提とする。実機検証は未実施。
+LAN 区間は HTTP であり Tailscale による暗号化の対象外。信頼するホーム LAN と許可したプロキシを前提とする。確認済みの範囲は [validation.md](validation.md) を参照。
 
 ## ファイル更新・運用
 
@@ -95,9 +93,9 @@ LAN 区間は HTTP であり Tailscale による暗号化の対象外。信頼�
 
 `Permission denied: '/app/src/__init__.py'` は、アプリ自身のイメージ内ファイルを非 root ユーザーが読めない起動エラー。crontab の読み取り権限不足とは別の問題である。通常の chmod だけでは、名前付きユーザーへの拒否 ACL が残る場合がある。Dockerfile はビルド用 `deploy/prepare_image.py` で、イメージ内 `/app` の POSIX アクセス ACL・ディレクトリのデフォルト ACL を除去してから、ディレクトリ0755・ファイル0644へ正規化する。所有者は COPY で root に明示する。ACL の除去に失敗した場合はビルドを止める。ビルド中に非 root ユーザーで import と静的ファイルの読み取りを検証する。QTS 側の設定ファイルや共有フォルダの権限は変更しない。
 
-chmod のみの前回修正でも同じエラーが発生したため、ACL の除去を追加した。QNAP 実機の ACL 値は未取得であり、これが実機の原因であることは未確定。POSIX ACL とモードの相互作用は [Moby の報告](https://github.com/moby/moby/issues/49766) も参照。
+POSIX ACL とモードの相互作用は [Moby の報告](https://github.com/moby/moby/issues/49766) も参照。
 
-修正版は Python 3.15 の公式 slim イメージを使用する。Dockerfile の修正を反映するには QNAP 上でイメージの再ビルドが必要。
+コンテナは Python 3.15 の公式 slim イメージを使用する。Dockerfile の変更を反映するには QNAP 上でイメージの再ビルドが必要。
 
 ```sh
 docker compose build --pull --no-cache qsv
@@ -105,13 +103,13 @@ docker compose up -d --force-recreate qsv
 docker compose logs --tail=50 qsv
 ```
 
-再ビルド後も同じエラーが出る場合は、実際に使用している Compose プロジェクトとイメージが修正版であること、追加の override で `/app` をホストからマウントしていないことを確認する。
+再ビルド後も同じエラーが出る場合は、実際に使用している Compose プロジェクトとイメージが想定したものになっていること、追加の override で `/app` をホストからマウントしていないことを確認する。
 
-ログの `git was not found` はビルド時にコミット情報を付与できない警告であり、今回の PermissionError の原因ではない。
+ログの `git was not found` はビルド時にコミット情報を付与できない警告であり、アプリの読み取り権限とは関係しない。
 
-## server-a での今回の公開設定
+## server-a の公開設定
 
-構成は `専用 Tailscale ノード(qsv) + Caddy :443 → LAN HTTP → QNAP :18080`。ホスト server-a の8443を使う前案は撤回した。ホスト側の443/8443を Docker で公開しないので既存サービスと競合しない。
+構成は `専用 Tailscale ノード(qsv) + Caddy :443 → LAN HTTP → QNAP :18080`。Docker のホストポートは公開せず、専用ノードのネットワークで待ち受ける。
 
 ### 1. 専用ノードの初回ログイン
 
@@ -126,7 +124,21 @@ sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml lo
 
 ログに表示される認証 URL をブラウザで開き、`tag:www-server` を付与できる管理者としてログインする。必要なら管理画面で端末を承認する。初回ログイン待ちの間は unhealthy でもよい。認証 URL を公開しない。初回だけブラウザで登録し、その後は named volume の state と TS_AUTH_ONCE=true で同じノードを使う。リポジトリに認証キーや既存サービスの state をコピーする必要はない。
 
-### 2. 新ノードの IP と DNS 名を設定
+### 2. Tailnet Lock の署名
+
+Tailnet Lock が有効で QSV ノードに Locked out と表示される場合は、ログインに加えてノードの署名が必要。QSV コンテナで次を実行する。
+
+```sh
+sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml exec tailscale tailscale lock status
+```
+
+表示された `tailscale lock sign nodekey:... tlpub:...` コマンドを、**信頼済み署名鍵を持つ既存の署名端末**で実行する。端末の権限設定に応じて sudo を使う。QSV コンテナ自身で署名するのではなく、Tailnet Lock の署名権限を持つ端末で実行する。単に署名済みで Tailnet に参加しているだけの端末には署名権限がない場合がある。
+
+管理画面の Machines で QSV ノードを選び、Sign node → CLI から署名コマンドを取得する方法もある。対象が QSV ノードであることを確認し、表示された nodekey と任意の rotation key をそのまま使用する。QSV を署名端末に昇格させたり、Tailnet Lock を無効化したりする必要はない。
+
+署名後は管理画面で Locked out が解消されたことを確認する。[Tailnet Lock の公式手順](https://tailscale.com/docs/features/tailnet-lock#add-a-node-to-a-locked-tailnet) を参照。
+
+### 3. 新ノードの IP と DNS 名を設定
 
 ```sh
 sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml exec tailscale tailscale ip -4
@@ -137,7 +149,7 @@ sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml ex
 
 Self.DNSName が `qsv.tailnet-name.ts.net.` であることを確認し、違う場合は QSV_PUBLIC_HOST を実際の値へ変更する（末尾のドットは除去）。同名ノードがあると接尾辞が付く場合がある。QSV_UPSTREAM の既定値は `192.168.0.1:18080`。
 
-### 3. Caddy の検証・起動
+### 4. Caddy の検証・起動
 
 ```sh
 sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile
@@ -149,19 +161,17 @@ sudo docker compose --env-file deploy/.env.proxy -f deploy/compose.proxy.yaml lo
 
 Caddy は TS_USERSPACE=false の Tailscale とネットワークを共有し、新ノードの IPv4:443 のみを listen する。HTTP リダイレクト用80番と管理APIは無効。ホストのポートマッピングや Funnel は使わない。Tailscale は /dev/net/tun と NET_ADMIN、Caddy は低ポート用 NET_BIND_SERVICE を使用する。QNAP アプリの権限は変更しない。
 
-### 4. 既存 grants とバックエンド IP 制限
+### 5. grants とバックエンド IP 制限
 
-提示された既存ポリシーでは、tag:www-server の TCP 443 は **group:admins と tag:client** の両方から許可される。この範囲でよければ grants・tagOwners の追加変更は不要。管理者だけに絞る場合には専用タグと grant が必要だが、現在の構成では追加しない。ホストの8443を許可するルールは不要。
+提示された既存ポリシーでは、tag:www-server の TCP 443 は **group:admins と tag:client** の両方から許可される。この範囲でよければ grants・tagOwners の追加変更は不要。管理者だけに絞る場合には専用タグと grant が必要だが、現在の構成では追加しない。
 
 QNAP から見た LAN 接続元は通常 Docker の NAT 後の server-a の LAN IP（観測環境は192.168.0.2）になる。Tailnet の新ノード IP を QSV_ALLOWED_PROXY_IPS に指定しない。経路変更や NAT の有無は実測する。403 の場合は proxy コンテナの環境から upstream への通信を確認し、QNAP の allowlist が実際の LAN 送信元を許可しているか確認する。
-
-既存プロキシを起動済みの場合、`up -d` で proxy は新しいネットワークへ再作成される。旧ホスト8443リスナーが消えたことを確認する。Compose の名前 qsv-proxy は引き継ぐが、ホスト Tailscale や他サービスには影響しない。
 
 ### 運用
 
 - 設定変更後は同じ `--env-file` と `-f` を付けた `up -d` で再作成する。
 - Tailscale を再作成した場合は、ネットワーク名前空間を共有する Caddy も `up -d --force-recreate proxy` で再作成する。
 - 停止は同じオプションの `down`。**`down -v` は state と証明書を消すので使用しない**。state を削除すると新しいノードとして再登録される。
-- 最終確認は別の許可済み Tailnet 端末のブラウザで行い、LAN IP の443/8443からアクセスできないことも確認する。
+- 最終確認は別の許可済み Tailnet 端末のブラウザで行い、LAN IP の443からアクセスできないことも確認する。
 
-Docker 起動は sudo の対話認証が必要なため、この環境からは未実施。Compose / Caddy の構成検証と実際のノード登録・ブラウザ到達性は区別する。
+検証状況は [validation.md](validation.md) を参照。

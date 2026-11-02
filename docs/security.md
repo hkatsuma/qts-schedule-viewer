@@ -12,7 +12,7 @@ Tailnet ACL は server-a の入口を保護するものであり、QNAP の LAN 
 
 Docker の NAT によって実際の接続元を区別できなくなる経路がないか実機確認する。許可元・拒否元の両方から実測し、共通の gateway IP を安易に許可しない。必要なら既存のネットワーク側制限を併用する。[Docker のファイアウォールの説明](https://docs.docker.com/engine/network/packet-filtering-firewalls/) を参照。
 
-Tailnet と server-a 間の暗号化は QNAP まで延長されない。今回の環境は信頼するホーム LAN とし、バックエンド HTTP + プロキシ IP 制限を採用する。追加の認証情報・パスワード・トークン・バックエンド TLS は要求しない。ブラウザ向け証明書・ACL・Funnel・IPv6 を含む確認事項は [deployment.md](deployment.md) を参照。
+Tailnet と server-a 間の暗号化は QNAP まで延長されない。ホーム LAN を信頼し、バックエンド HTTP + プロキシ IP 制限を採用する。追加の認証情報・パスワード・トークン・バックエンド TLS は要求しない。ブラウザ向け証明書・ACL・Funnel・IPv6 を含む確認事項は [deployment.md](deployment.md) を参照。
 
 収集コンテナの host network、privileged、Docker socket、ホストの /etc 全体マウントは使用しない。QNAP の設定ファイルや権限をアプリから変更しない。許可されたプロキシとホーム LAN を信頼する構成であり、プロキシの侵害や LAN 内での IP 詐称を認証で防ぐものではない。
 
