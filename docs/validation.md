@@ -16,6 +16,17 @@ Python 3.14.4 / FastAPI 0.162.0 / croniter 6.2.4 で pytest **37件成功**。
 
 API テストは開発環境のサンドボックス外で実行している。サンドボックス内ではスレッド間通信が停止し、ACL fixture に EINVAL が出る場合がある。制限外では skip なしで成功。Starlette TestClient の httpx 連携について非推奨警告が1件ある。
 
+## 設定例からの初期化
+
+Git 追跡ファイルだけを一時ディレクトリに配置し、ドキュメントのコピー手順で QNAP 用・server-a 用それぞれの compose.yaml と .env を生成して検証済み。
+
+- 設定例だけの状態から、ファイル指定なしの docker compose config が成功
+- サンプルの bind IP、プロキシ IP、Tailnet IP・ドメイン・upstream が意図どおり反映
+- QNAP のビルドコンテキストはリポジトリのルート、Caddyfile の bind 元は deploy/proxy 内に解決
+- 初期化を繰り返しても設定済みの compose.yaml / .env は上書きしない
+
+実稼働の Compose・Caddyfile・.env のハッシュが不変であることも確認済み。これは Compose の展開検証であり、コンテナの再起動試験ではない。
+
 ## コンテナと実機
 
 | 対象 | 確認済みの範囲 |

@@ -15,17 +15,28 @@
 - ホーム LAN は信頼する。バックエンドは HTTP + プロキシ IP 制限とし、パスワード・トークン等の追加認証情報は使わない。
 - 開発 PC：QNAP のディレクトリをマウントして編集する。コンテナ実行ホストではない。
 
-既存 nas-a-admin の方式に合わせ、QSV 専用 Tailnet ノードを1つ登録する。QNAP の生設定ファイルの server-a への共有は不要。同名 Docker bridge network で別ホストは接続できないため、QNAP の LAN IP・専用ポートを upstream にする。
+Tailscale コンテナとネットワークを共有する Caddy を使い、QSV 専用 Tailnet ノードを1つ登録する。QNAP の生設定ファイルの server-a への共有は不要。同名 Docker bridge network で別ホストは接続できないため、QNAP の LAN IP・専用ポートを upstream にする。
+
+## Git 管理する設定例とローカル設定
+
+| 実行ホスト / 作業ディレクトリ | Git 管理する設定例 | 初回に作成するローカルファイル |
+|---|---|---|
+| QNAP / リポジトリのルート | compose.yaml.example、.env.example | compose.yaml、.env |
+| server-a / deploy/proxy | compose.yaml.example、.env.example | compose.yaml、.env |
+
+`compose.yaml` と `.env` は Git 管理対象外。新規 clone には存在しないため、初回は同じディレクトリの設定例からコピーする。通常の `docker compose` は、作成したローカルファイルを読み込む。設定例を `-f` で直接指定して運用する必要はない。
+
+プロキシの `Caddyfile` は `deploy/proxy` に同梱し、ホスト名・IP は `.env` から渡す。QNAP の Compose はリポジトリのルートに置き、同じ場所の Dockerfile と src をビルドする。
 
 ## QNAP 上での設定・起動
 
 `/etc/config/crontab` 1ファイルを読み取り専用 bind mount する。非 root、capabilities 全削除、privileged・Docker socket 不使用、root filesystem 読み取り専用を維持する。QTS の設定やファイル権限をアプリから変更しない。読み取り権限がなければ収集状況に表示する。
 
-QNAP のシェルで実行する。Container Station から Compose を登録する場合も QNAP 上のファイルと同じ設定値を使う。
+QNAP のシェルでリポジトリのルートへ移動して実行する。Container Station から Compose を登録する場合も QNAP 上で作成した compose.yaml と同じ設定値を使う。
 
 ```sh
-cp -n compose.yaml.example compose.yaml
-cp -n .env.example .env
+[ -e compose.yaml ] || cp compose.yaml.example compose.yaml
+[ -e .env ] || cp .env.example .env
 # 下表に従い .env を編集する
 docker compose config --quiet
 docker compose up -d --build
@@ -63,14 +74,14 @@ Docker と firewall の経路については [Docker のポート公開](https:/
 
 ## server-a のリバースプロキシ
 
-`deploy/Caddyfile.qsv.example` は Caddy の設定例。実際のプロキシ製品・配置・Tailscale モード・IP・ドメイン・証明書はまだ未確認であり、既存方式に合わせる。
+プロキシは `deploy/proxy/compose.yaml.example` から作成した Compose と、同梱の `deploy/proxy/Caddyfile` を使う。`deploy/Caddyfile.qsv.example` は構成を説明するための別の設定例であり、起動時にコピーする必要はない。
 
 1. upstream を `http://<QNAP の LAN IP>:<専用ポート>` にする。Docker サービス名 `qsv:8000` や server-a 自身の localhost には向けない。
 2. QSV 専用ノードの443番にサイトを追加し、既存 tag:www-server の grants で利用者を制限する。独自の IP allowlist や追加の認証情報はプロキシに設けない。Funnel は使わない。
 3. Tailscale は TS_USERSPACE=false のカーネルモードとし、Caddy は network_mode: service:tailscale でネットワークを共有する。新ノードの Tailnet IPv4 だけに bind する。
 4. ブラウザ向け HTTPS は既存の証明書運用に合わせる。例の `get_certificate tailscale` は専用 Tailscale コンテナの socket へのアクセスが必要。
 5. 元の Host を保持する。手動再取得の Origin 検査に必要。現状の UI はルート `/` 配下用なので、専用ドメインまたは専用ポートを使う。`/qsv/` のようなサブパス配置は未対応。
-6. 専用 Compose だけを起動・更新する。ホスト自身の Tailscale や既存 nas-a-admin の state・設定は共有も変更もしない。
+6. 専用 Compose だけを起動・更新する。ホスト自身の Tailscale や他サービスの state・設定は共有も変更もしない。
 
 Caddy の参考：[reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)。
 
@@ -90,7 +101,16 @@ LAN 区間は HTTP であり Tailscale による暗号化の対象外。信頼�
 
 単一ファイルの bind mount は、QTS が rename で設定を置換すると古い inode を参照し続ける可能性がある。更新方法は実機未確認。反映されない場合は QNAP 上で `docker compose up -d --force-recreate qsv` によりマウントし直す。`/etc/config` 全体の共有で回避しない。
 
-更新は QNAP 上でコード取得後 `docker compose up -d --build`。削除時は server-a の QSV 向けサイトを除去し、QNAP で `docker compose down` を実行する。既存 Tailscale state・証明書・QTS 設定は削除しない。
+Git で更新されるのはソースと設定例。ローカルの compose.yaml と .env は自動更新されない。更新時は各実行ディレクトリで以下の順に確認する。
+
+1. `diff -u compose.yaml compose.yaml.example` と `diff -u .env .env.example` で設定例との差分を確認する。IP・ドメイン等の環境固有の差分はそのまま保持する。
+2. 必要な変更だけをローカルの compose.yaml / .env に反映する。設定例でファイル全体を上書きしない。
+3. `docker compose config --quiet` で検証する。
+4. QNAP は `docker compose up -d --build`、server-a は `sudo docker compose up -d` で適用する。
+
+プロキシの Caddyfile は Git 管理されるが、Caddy の管理 API は無効。Caddyfile の内容だけを更新した場合も、`deploy/proxy` で `sudo docker compose up -d --force-recreate proxy` を実行し、ファイルのマウントも作り直して読み込む。Compose や環境変数の変更は restart では反映されないため up -d を使う。
+
+削除時は各実行ディレクトリで `docker compose down` を実行する。Tailscale state・証明書・QTS 設定は削除しない。
 
 ## アプリ読み込み時の PermissionError
 
@@ -116,13 +136,13 @@ docker compose logs --tail=50 qsv
 
 ### 1. 専用ノードの初回ログイン
 
-以下は server-a 上、本リポジトリの `deploy/proxy` ディレクトリで実行する。Compose は同じディレクトリの `compose.yaml` と `.env` を自動的に読み込む。実稼働の compose.yaml と .env は Git 管理対象外で、追跡対象は compose.yaml.example と .env.example。プロジェクト名は `qsv-proxy` に固定され、state・証明書はこの名前の Docker volume に保存する。QNAP アプリ用のルートディレクトリの `.env` とは別設定で、Git 管理対象外。
+以下は server-a 上、本リポジトリの `deploy/proxy` ディレクトリで実行する。Compose は同じディレクトリの `compose.yaml` と `.env` を自動的に読み込む。プロジェクト名は `qsv-proxy` に固定され、state・証明書はこの名前の Docker volume に保存する。QNAP アプリ用のルートディレクトリの `.env` とは別設定。
 
 ```sh
 cd deploy/proxy
 # 初回だけ実行。設定済みのファイルは上書きしない。
-cp -n compose.yaml.example compose.yaml
-cp -n .env.example .env
+[ -e compose.yaml ] || cp compose.yaml.example compose.yaml
+[ -e .env ] || cp .env.example .env
 sudo docker compose config --quiet
 sudo docker compose up -d tailscale
 sudo docker compose logs --tail=100 tailscale

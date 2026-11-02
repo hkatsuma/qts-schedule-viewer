@@ -27,7 +27,7 @@ Docker bridge network はホストごとに独立しており、両ホストに�
 
 server-a が停止すると Tailnet から閲覧できなくなるが、QNAP の収集は継続できる。QNAP または LAN 接続の停止時はプロキシが接続失敗を返す。両ホストそれぞれで再起動後の復旧を確認する。
 
-compose.yaml は QNAP の指定 LAN IP でバックエンドを公開し、deploy/Caddyfile.qsv.example は別ホストの server-a から LAN upstream へ中継する構成を示す。IP・ポート・証明書等の実機設定は [deployment.md](deployment.md) を参照。
+QNAP 用の compose.yaml.example と server-a 用の deploy/proxy/compose.yaml.example を配布する。各ディレクトリで compose.yaml にコピーし、Git 管理外の .env に実環境の値を設定する。QNAP は指定 LAN IP でバックエンドを公開し、server-a の Caddy は LAN upstream へ中継する。IP・ポート・証明書等の実機設定は [deployment.md](deployment.md) を参照。
 
 
 Collector → 共通 Pydantic モデル → メモリキャッシュ → FastAPI → 外部依存のない HTML / CSS / JavaScript。起動時と既定300秒ごと、手動操作で収集する。スケジュールの変更やジョブ実行は行わない。分類が実証できていない cron は system として表示する。

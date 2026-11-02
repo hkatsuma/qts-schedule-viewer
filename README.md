@@ -14,7 +14,7 @@ QNAP 上の Container Station / Docker で動く、読み取り専用の初期�
 - 起動時 / 5分ごと / 手動の再取得、収集状態と古い情報の表示
 - 非 root・read-only コンテナ、LAN HTTP バックエンドとプロキシ IP allowlist
 
-電源・RAID・SMART・Snapshot・HBS 3 等は **実機調査待ちで未対応** です。cron は人工サンプルで検証しており、QTS 上の動作・Tailnet 到達性は未検証です。すべての cron は system 分類とし、実機確認なしのカテゴリ推定は行いません。コマンド引数は秘密情報保護のため一律非表示です。
+電源・RAID・SMART・Snapshot・HBS 3 等は **実機調査待ちで未対応** です。実機での起動・API 応答と利用者による稼働は確認済みですが、QTS の全設定との照合や再起動後の復旧確認は未完了です。すべての cron は system 分類とし、実機確認なしのカテゴリ推定は行いません。コマンド引数は秘密情報保護のため一律非表示です。
 
 ## QNAP への導入
 
@@ -28,7 +28,7 @@ Tailnet のブラウザ
 
 [導入・Tailnet 公開設計](docs/deployment.md) を参照してください。Tailnet からリバースプロキシへのアクセスは Tailscale ACL で制御します。QNAP は信頼するホーム LAN 経由の HTTP 接続とし、バックエンドでは中継するプロキシの接続元 IP だけを allowlist で制限します。追加のパスワード・トークン認証は使いません。
 
-QNAP 上で `compose.yaml.example` を `compose.yaml` に、`.env.example` を `.env` にコピーし、`QSV_BIND_IP`（QNAP の LAN IP）と `QSV_ALLOWED_PROXY_IPS`（server-a の実際の接続元 LAN IP）を設定して `docker compose up -d --build` で起動します。空の allowlist は拒否、不正な IP は起動エラーになります。設定例の IP は実機の値に置き換えてください。
+QNAP 上のリポジトリのルートで `compose.yaml.example` を `compose.yaml` に、`.env.example` を `.env` にコピーし、`QSV_BIND_IP`（QNAP の LAN IP）と `QSV_ALLOWED_PROXY_IPS`（server-a の実際の接続元 LAN IP）を設定して `docker compose up -d --build` で起動します。空の allowlist は拒否、不正な IP は起動エラーになります。設定例の IP は実機の値に置き換えてください。
 
 `deploy/Caddyfile.qsv.example` は server-a 上の Caddy 用の例です。プロキシ側に独自の IP allowlist は追加しません。
 
@@ -69,4 +69,4 @@ sudo docker compose down && sudo docker compose up -d
 
 `down -v` は Tailscale state や証明書を消すため使用しません。共有マウントへの依存とローカル配置の選択肢は [導入手順](docs/deployment.md#共有フォルダへの依存) を参照してください。
 
-実稼働の `compose.yaml` と `.env` はローカルファイルとして Git 管理から除外しています。追跡対象は匿名化した設定例です。設定例を更新しても、設定済みの実稼働ファイルを上書きしないでください。
+実稼働の `compose.yaml` と `.env` はローカルファイルとして Git 管理から除外しています。追跡対象は匿名化した設定例です。Git で設定例を更新しても、実稼働ファイルには自動反映されません。設定例との差分を確認し、実環境の値を保持して必要な変更だけを実稼働ファイルに反映してください。

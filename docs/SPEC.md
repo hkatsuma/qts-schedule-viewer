@@ -583,8 +583,14 @@ cronとの重複排除もこの段階で行う。
 qts-schedule-viewer/
 ├── README.md
 ├── Dockerfile
-├── compose.yaml
+├── compose.yaml.example
 ├── .env.example
+├── deploy/
+│   ├── prepare_image.py
+│   └── proxy/
+│       ├── compose.yaml.example
+│       ├── .env.example
+│       └── Caddyfile
 ├── src/
 │   ├── collectors/
 │   ├── models/
@@ -601,7 +607,7 @@ qts-schedule-viewer/
     └── collectors.md
 ```
 
-ディレクトリ構造は一例であり、合理的な変更は認める。
+ディレクトリ構造は一例であり、合理的な変更は認める。Git 管理する Compose は匿名化した compose.yaml.example とする。各ホストで compose.yaml と .env を作成して実値を設定し、これらの実稼働ファイルは Git 管理しない。設定例の更新は実稼働ファイルに自動反映しない。
 
 ドキュメントには以下を含める。
 
