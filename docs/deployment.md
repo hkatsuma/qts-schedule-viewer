@@ -24,7 +24,8 @@
 QNAP のシェルで実行する。Container Station から Compose を登録する場合も QNAP 上のファイルと同じ設定値を使う。
 
 ```sh
-cp .env.example .env
+cp -n compose.yaml.example compose.yaml
+cp -n .env.example .env
 # 下表に従い .env を編集する
 docker compose config --quiet
 docker compose up -d --build
@@ -115,11 +116,12 @@ docker compose logs --tail=50 qsv
 
 ### 1. 専用ノードの初回ログイン
 
-以下は server-a 上、本リポジトリの `deploy/proxy` ディレクトリで実行する。Compose は同じディレクトリの `compose.yaml` と `.env` を自動的に読み込む。プロジェクト名は `qsv-proxy` に固定され、state・証明書はこの名前の Docker volume に保存する。QNAP アプリ用のルートディレクトリの `.env` とは別設定で、Git 管理対象外。
+以下は server-a 上、本リポジトリの `deploy/proxy` ディレクトリで実行する。Compose は同じディレクトリの `compose.yaml` と `.env` を自動的に読み込む。実稼働の compose.yaml と .env は Git 管理対象外で、追跡対象は compose.yaml.example と .env.example。プロジェクト名は `qsv-proxy` に固定され、state・証明書はこの名前の Docker volume に保存する。QNAP アプリ用のルートディレクトリの `.env` とは別設定で、Git 管理対象外。
 
 ```sh
 cd deploy/proxy
-# 初回だけ実行。設定済みの .env は上書きしない。
+# 初回だけ実行。設定済みのファイルは上書きしない。
+cp -n compose.yaml.example compose.yaml
 cp -n .env.example .env
 sudo docker compose config --quiet
 sudo docker compose up -d tailscale
@@ -151,7 +153,7 @@ sudo docker compose exec tailscale tailscale status --json
 
 `deploy/proxy/.env`（このディレクトリでは `.env`）の QSV_TAILNET_IP を **この新ノードの IPv4** に置き換える。ホスト server-a の IP は使わない。初期値127.0.0.1は安全な初期状態として loopback に限定するもので、このままでは Tailnet から接続できない。
 
-Self.DNSName が `qsv.tailnet-name.ts.net.` であることを確認し、違う場合は QSV_PUBLIC_HOST を実際の値へ変更する（末尾のドットは除去）。同名ノードがあると接尾辞が付く場合がある。QSV_UPSTREAM の既定値は `192.168.0.1:18080`。
+Self.DNSName が `qsv.tailnet-name.ts.net.` であることを確認し、違う場合は QSV_PUBLIC_HOST を実際の値へ変更する（末尾のドットは除去）。同名ノードがあると接尾辞が付く場合がある。QSV_UPSTREAM のサンプル値は `192.168.0.1:18080`。実際の接続先は .env に明示する。
 
 ### 4. Caddy の検証・起動
 

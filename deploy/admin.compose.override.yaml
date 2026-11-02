@@ -1,4 +1,0 @@
-# Retired: a shared Docker bridge cannot connect server-a and QNAP.
-# Kept as an inert migration notice; do not include this file in deployments.
-# Use QNAP's LAN IP + dedicated HTTP port as the proxy upstream instead.
-services: {}

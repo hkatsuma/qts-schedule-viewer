@@ -221,3 +221,8 @@ __marimo__/
 
 # Local QSV proxy deployment settings
 deploy/proxy/.env
+
+# Local runtime deployment files; copy from the tracked examples.
+/compose.yaml
+/deploy/proxy/compose.yaml
+/deploy/admin.compose.override.yaml
