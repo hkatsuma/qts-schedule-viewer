@@ -226,3 +226,6 @@ deploy/proxy/.env
 /compose.yaml
 /deploy/proxy/compose.yaml
 /deploy/admin.compose.override.yaml
+
+# Feature development worktrees
+/.worktrees/
