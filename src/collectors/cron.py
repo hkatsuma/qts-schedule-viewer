@@ -12,7 +12,7 @@ MAX_TASKS = 500
 
 def safe_command(command: str) -> str:
     # Values and arbitrary arguments may contain secrets with no recognizable
-    # key. Only reveal an allowlisted executable; never send arguments.
+    # key. Default responses reveal only an allowlisted executable.
     first = command.split()[0] if command.split() else ''
     known = {'/sbin/vs_refresh': 'QTS ストレージ更新',
              '/sbin/hwclock': 'ハードウェア時計',
@@ -66,6 +66,11 @@ class CronCollector:
                         schedule=Schedule(expression=expression, timezone=self.timezone,
                                           description=describe(expression) if len(expression.split()) == 5 else '未対応の記法'),
                         source=Source(collector='cron', location='/etc/config/crontab'), command=safe_command(command))
+            if expression != '@unsupported':
+                # Preserve the command from this snapshot, even if its cron
+                # fields fail validation. Unseparable rows remain unavailable.
+                task._raw_command = command
+                task.command_available = True
             try:
                 validate(expression)
                 if env_timezone:

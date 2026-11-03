@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class Schedule(BaseModel):
@@ -29,6 +29,9 @@ class Task(BaseModel):
     runs_per_active_day: int | None = None
     source: Source
     command: str
+    command_available: bool = False
+    # Never serialize the original command, including nested collections.
+    _raw_command: str | None = PrivateAttr(default=None)
     configuration_location: str = 'QTS / cron（管理画面の有無は実機で確認）'
     collection_status: str = 'ok'
     warnings: list[str] = Field(default_factory=list)

@@ -14,7 +14,7 @@ QNAP 上の Container Station / Docker で動く、読み取り専用の初期�
 - 起動時 / 5分ごと / 手動の再取得、収集状態と古い情報の表示
 - 非 root・read-only コンテナ、LAN HTTP バックエンドとプロキシ IP allowlist
 
-電源・RAID・SMART・Snapshot・HBS 3 等は **実機調査待ちで未対応** です。実機での起動・API 応答と利用者による稼働は確認済みですが、QTS の全設定との照合や再起動後の復旧確認は未完了です。すべての cron は system 分類とし、実機確認なしのカテゴリ推定は行いません。コマンド引数は秘密情報保護のため一律非表示です。
+電源・RAID・SMART・Snapshot・HBS 3 等は **実機調査待ちで未対応** です。実機での起動・API 応答と利用者による稼働は確認済みですが、QTS の全設定との照合や再起動後の復旧確認は未完了です。すべての cron は system 分類とし、実機確認なしのカテゴリ推定は行いません。コマンド全文は詳細画面で「コマンドを表示」を押すと確認できます。初期状態・一覧・検索・CSV では非表示です。
 
 ## 予定の見方
 
@@ -43,6 +43,8 @@ QNAP 上のリポジトリのルートで `compose.yaml.example` を `compose.ya
 `QSV_CRONTAB_SOURCE` は **QNAP 側のパス** です。単一ファイルを読み取り専用で共有し、QTS の設定や権限は変更しません。
 
 ## 開発・テスト
+
+稼働用ディレクトリは main のまま維持し、開発は配下の worktree と専用ブランチで行います。`.worktrees/` は Git と Docker ビルドの対象外です。例えば `git worktree add -b feature/my-change .worktrees/my-change` で作成し、そのディレクトリへ移動して作業します。実稼働の `compose.yaml`・`.env` は worktree にコピーせず、人工データで検証します。
 
 コンテナは Python 3.15 を使用します。ローカル開発も Python 3.15 を推奨します（既存テストは 3.14 でも実施）。人工データでのローカル確認例：
 

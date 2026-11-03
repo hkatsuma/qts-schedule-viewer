@@ -29,8 +29,53 @@ function params() {
 function fmt(at) {
   return at ? new Intl.DateTimeFormat('ja-JP',{timeZone:data.timezone,dateStyle:'short',timeStyle:'short'}).format(new Date(at)) : '算出不可';
 }
+const commandResets = new Set();
+function hideCommands() {
+  for (const reset of commandResets) reset();
+}
+function commandControl(task,index) {
+  const card=el('article',undefined,'card');
+  card.append(el('strong',task.name));
+  if (!task.command_available) {
+    card.append(el('p','コマンドを分離できない設定のため、原文は表示できません。'));
+    return card;
+  }
+  const button=el('button','コマンドを表示'), status=el('p'), body=el('pre');
+  body.id=`command-${index}`; body.hidden=true;
+  status.setAttribute('role','status');
+  button.setAttribute('aria-controls',body.id);
+  let controller=null, visible=false;
+  const reset=() => {
+    controller?.abort(); controller=null; visible=false;
+    body.textContent=''; body.hidden=true; status.textContent='';
+    button.textContent='コマンドを表示'; button.setAttribute('aria-expanded','false');
+  };
+  reset(); commandResets.add(reset);
+  button.onclick=async() => {
+    if (visible) {reset(); return;}
+    visible=true;
+    const request=new AbortController(); controller=request;
+    button.textContent='コマンドを非表示'; button.setAttribute('aria-expanded','true');
+    status.textContent='読み込み中…';
+    try {
+      const response=await fetch(`/api/schedules/${encodeURIComponent(task.id)}/command`,{signal:request.signal,cache:'no-store'});
+      if (!response.ok) throw new Error();
+      const result=await response.json();
+      if (controller!==request || request.signal.aborted) return;
+      body.textContent=result.command; body.hidden=false;
+      status.textContent=result.stale ? '収集に失敗したため、前回取得したコマンドを表示しています。' : '収集時点のコマンドです。実行・編集はできません。';
+    } catch {
+      if (controller!==request || request.signal.aborted) return;
+      reset(); status.textContent='コマンドを取得できません。スケジュールを再取得してから開き直してください。';
+    }
+  };
+  card.append(button,status,body);
+  return card;
+}
 function showTasks(tasks,title,context) {
   if (!tasks.length) return;
+  hideCommands(); commandResets.clear();
+  $('detail-commands').replaceChildren(...tasks.map(commandControl));
   $('detail-title').textContent = title || (tasks.length === 1 ? tasks[0].name : `${tasks.length} 件のタスク`);
   const descriptions = tasks.map(t => [
     t.name,`カテゴリ: ${categories[t.category] || t.category}`,`提供元: ${t.provider}`,
@@ -44,8 +89,11 @@ function showTasks(tasks,title,context) {
   $('detail-body').textContent = [context,...descriptions].filter(Boolean).join('\n\n────────\n\n');
   $('detail').showModal();
 }
-$('close').onclick = () => $('detail').close();
-$('detail').addEventListener('click', e => {if (e.target === $('detail')) $('detail').close();});
+function closeDetail() {hideCommands(); $('detail').close();}
+$('close').onclick = closeDetail;
+$('detail').addEventListener('cancel',hideCommands);
+$('detail').addEventListener('close',hideCommands);
+$('detail').addEventListener('click', e => {if (e.target === $('detail')) closeDetail();});
 function rows() {
   $('rows').replaceChildren();
   $('count').textContent = `${data.tasks.length} 件（次回実行予定順）`;
@@ -156,6 +204,7 @@ async function monthCalendar(ticket) {
   $('month-note').textContent=calendar.days.length ? '同じ日の繰り返し実行はタスクごとに集計しています。詳しい時刻は日付を選んで週間表示で確認できます。' : 'この月に計算可能な予定はありません。フィルタと収集状況も確認してください。';
 }
 async function load() {
+  hideCommands();
   const ticket=++revision;
   try {
     const response=await fetch('/api/schedules?'+params());
@@ -191,6 +240,7 @@ for (const [id,delta] of [['month-prev',-1],['month-next',1]]) $(id).onclick=() 
 $('today').onclick=() => {$('date').value=nasToday(); load();};
 $('month-today').onclick=() => {$('month-date').value=nasToday().slice(0,7); load();};
 $('refresh').onclick=async() => {
+  hideCommands();
   const button=$('refresh'); button.disabled=true;
   try {const response=await fetch('/api/refresh',{method:'POST'}); if (!response.ok) throw new Error(); await load();}
   catch {$('notice').textContent='再取得に失敗しました';}
