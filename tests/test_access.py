@@ -24,7 +24,7 @@ def test_invalid_configuration_fails_startup(value):
         create_app(allowed_proxy_ips=value)
 
 
-@pytest.mark.parametrize('path', ['/', '/static/app.js', '/api/schedules', '/api/timeline?start=2026-10-26', '/api/export.csv', '/api/month?month=2026-11-01', '/openapi.json', '/healthz'])
+@pytest.mark.parametrize('path', ['/', '/static/app.js', '/api/schedules', '/api/timeline?start=2026-10-26', '/api/export.csv', '/api/month?month=2026-11-01', '/openapi.json', '/api/schedules/unknown/command', '/healthz'])
 def test_all_routes_reject_unlisted_peer_even_with_spoofed_headers(path):
     app = create_app(allowed_proxy_ips='192.168.0.2')
     with TestClient(app, client=('192.168.10.99', 12345)) as client:

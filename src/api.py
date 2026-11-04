@@ -105,6 +105,18 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         await service.refresh()
         return {'status': 'ok'}
 
+    @app.get('/api/schedules/{task_id}/command')
+    def command(task_id: str):
+        # Use the collected snapshot, never a request-supplied filesystem path.
+        for collection in service.results.values():
+            for task in collection.tasks:
+                if task.id == task_id:
+                    if task._raw_command is None:
+                        raise HTTPException(404, 'コマンドを分離できない設定です')
+                    return {'id': task.id, 'command': task._raw_command,
+                            'stale': collection.stale}
+        raise HTTPException(404, 'タスクが見つかりません。再取得してください')
+
     @app.get('/api/timeline')
     def timeline(start: date, q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all'):
         if not 1970 <= start.year <= 2199:
