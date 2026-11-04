@@ -18,6 +18,8 @@ class Source(BaseModel):
 
 class Task(BaseModel):
     id: str
+    definition_id: str | None = None
+    duplicate_count: int = 1
     name: str
     description: str = ''
     category: str = 'system'

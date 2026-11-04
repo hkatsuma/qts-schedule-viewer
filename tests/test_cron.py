@@ -19,7 +19,7 @@ def test_parse_stable_ids_and_secrets(tmp_path):
     assert all(t.collected_at == NOW for t in result.tasks)
     assert len(result.tasks) == 2
     assert result.tasks[0].id != result.tasks[1].id
-    assert result.tasks[0].id == collect(tmp_path, '\n\n' + line).tasks[0].id
+    assert result.tasks[0].id == collect(tmp_path, '\n\nSHELL=/bin/sh\n' + line).tasks[0].id
     assert 'SECRET' not in result.model_dump_json()
     assert 'user:secret' not in result.model_dump_json()
     assert 'hwclock' in result.tasks[0].command
