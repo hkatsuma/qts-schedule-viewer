@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from src.models import Collection
@@ -10,11 +11,13 @@ UNSUPPORTED = {'power': '電源', 'raid': 'RAIDスクラビング', 'smart': 'S.
 
 
 class CollectionService:
-    def __init__(self, collector: CronCollector, interval: int = 300):
+    def __init__(self, collector: CronCollector, interval: int = 300, annotations=None):
         self.collector, self.interval = collector, interval
         self.results: dict[str, Collection] = {}
         self.lock = asyncio.Lock()
         self.pending: asyncio.Task | None = None
+        self.annotations = annotations
+        self.annotation_error = False
 
     async def refresh(self) -> None:
         if self.lock.locked():
@@ -42,6 +45,14 @@ class CollectionService:
                     result.tasks = previous.tasks
                     result.stale = bool(previous.tasks)
             self.results['cron'] = result
+            if self.annotations:
+                try:
+                    await asyncio.to_thread(self.annotations.observe,
+                        {t.definition_id for t in result.tasks if t.definition_id},
+                        result.status, result.attempted_at.isoformat(), stale=result.stale)
+                    self.annotation_error = False
+                except (sqlite3.Error, OSError):
+                    self.annotation_error = True
             for key, label in UNSUPPORTED.items():
                 self.results[key] = Collection(collector=key, status='unsupported',
                     message=f'{label}: 実機調査待ち（未インストール・タスクなしとは判定していません）', attempted_at=now)

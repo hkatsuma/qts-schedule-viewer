@@ -97,7 +97,7 @@ def main():
     with TemporaryDirectory(prefix='qsv-browser-') as temp:
         path = Path(temp) / 'cron'
         path.write_text(f'0 3 * * * {RAW}\n0 3 * * * {RAW}\n')
-        app = create_app(path, allowed_proxy_ips='127.0.0.1')
+        app = create_app(path, allowed_proxy_ips='127.0.0.1', db_path=Path(temp) / 'qsv.sqlite3')
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
             port = listener.getsockname()[1]

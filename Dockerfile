@@ -9,6 +9,7 @@ COPY --chown=0:0 src ./src
 # QNAP ACLs can deny named users even when ordinary mode bits are 0644.
 # Normalize only image-owned files, including /app and directory defaults.
 RUN python /tmp/prepare_image.py /app
+RUN mkdir -p /data && chown 10001:10001 /data && chmod 0700 /data
 USER 10001:10001
 # Fail at build time if runtime imports or static assets are unreadable.
 RUN python -c "import src.api; from pathlib import Path; [p.read_bytes() for p in Path('src').rglob('*') if p.is_file()]"

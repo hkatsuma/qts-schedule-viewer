@@ -10,8 +10,10 @@ services:
       QSV_TIMEZONE: ${QSV_TIMEZONE:-Asia/Tokyo}
       QSV_REFRESH_SECONDS: ${QSV_REFRESH_SECONDS:-300}
       QSV_CRONTAB_PATH: /host/crontab
+      QSV_DB_PATH: /data/qsv.sqlite3
       QSV_ALLOWED_PROXY_IPS: ${QSV_ALLOWED_PROXY_IPS:?Set the LAN IP of server-a}
     volumes:
+      - qsv-data:/data
       - type: bind
         source: ${QSV_CRONTAB_SOURCE:-/etc/config/crontab}
         target: /host/crontab
@@ -26,3 +28,6 @@ services:
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 64
+
+volumes:
+  qsv-data:

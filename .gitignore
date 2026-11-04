@@ -229,3 +229,8 @@ deploy/proxy/.env
 
 # Feature development worktrees
 /.worktrees/
+
+# Local annotation databases and backups
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
