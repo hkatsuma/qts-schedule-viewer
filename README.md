@@ -7,10 +7,11 @@ QNAP 公式とは無関係のサードパーティーアプリです。
 
 ## 現在の実装
 
-QNAP 上の Container Station / Docker で動く、読み取り専用の初期実装です。開発 PC への共有フォルダのマウントと、コンテナの実行場所は別です。
+QNAP 上の Container Station / Docker で動く、NAS 設定を読み取り専用で参照する初期実装です。開発 PC への共有フォルダのマウントと、コンテナの実行場所は別です。
 
 - cron 収集、次回予定の計算、週間タイムライン（月曜始まり / 指定日から7日間）、月間カレンダー
 - 日本語の一覧・詳細、検索・カテゴリ・提供元・有効状態・実行頻度のフィルタ、CSV 出力
+- タグ・表示名の編集、複数タグの OR / AND 絞り込み、SQLite への永続保存
 - 起動時 / 5分ごと / 手動の再取得、収集状態と古い情報の表示
 - 非 root・read-only コンテナ、LAN HTTP バックエンドとプロキシ IP allowlist
 
@@ -23,6 +24,12 @@ QNAP 上の Container Station / Docker で動く、読み取り専用の初期�
 頻度は cron の分・時フィールドから求める、実行対象日の通常24時間の回数です。例えば月初だけ毎分実行する設定も高頻度に含みます。算出できない設定は「高頻度を除外」に残し、収集状況・詳細で確認できます。頻度の選択だけをブラウザに保存し、収集データは保存しません。
 
 月初・特定日などの月単位の予定は「月間カレンダー」で前月・次月へ移動して確認できます。同日の同じタスクは、最初の予定時刻と回数にまとめます。日付をクリックすると週間表示へ移動し、タスクをクリックすると詳細を表示します。
+
+## タグ・表示名
+
+詳細画面の「表示名・タグを編集」で保存します。タグは「タグ・表示名」画面で作成・名前変更・削除でき、フィルタでは複数選択して「いずれか一致（OR）／すべて一致（AND）」を選びます。表示名とタグ条件は一覧・週間・月間・CSV に反映します。同一定義の重複行は表示名とタグを共有し、実行予定は各行を残します。
+
+時刻やコマンドが変更された別のジョブへ、表示名とタグは自動では移しません。「タグ・表示名」画面からコピー元とコピー先のジョブを選んでコピーします。見つからなくなったジョブの表示名とタグも保持します。保存先は QNAP のローカル Docker volume 上の SQLite で、QTS の設定ファイルには書き込みません。
 
 ## QNAP への導入
 
@@ -40,6 +47,8 @@ QNAP 上のリポジトリのルートで `compose.yaml.example` を `compose.ya
 
 `deploy/Caddyfile.qsv.example` は server-a 上の Caddy 用の例です。プロキシ側に独自の IP allowlist は追加しません。
 
+注釈 DB 用の `qsv-data:/data` ボリュームが必要です。設定例の `volumes` と `QSV_DB_PATH` をローカルの Compose に反映し、`/data` を非 root ユーザーが書き込めるようにします。DB は NAS 共有を開発 PC 経由でマウントした場所には置きません。
+
 `QSV_CRONTAB_SOURCE` は **QNAP 側のパス** です。単一ファイルを読み取り専用で共有し、QTS の設定や権限は変更しません。
 
 ## 開発・テスト
@@ -52,7 +61,7 @@ QNAP 上のリポジトリのルートで `compose.yaml.example` を `compose.ya
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements-dev.txt
-QSV_CRONTAB_PATH=./samples/crontab QSV_TIMEZONE=Asia/Tokyo QSV_ALLOWED_PROXY_IPS=127.0.0.1 uvicorn src.api:app --host 127.0.0.1 --port 8000 --no-proxy-headers
+QSV_DB_PATH=/tmp/qsv-dev.sqlite3 QSV_CRONTAB_PATH=./samples/crontab QSV_TIMEZONE=Asia/Tokyo QSV_ALLOWED_PROXY_IPS=127.0.0.1 uvicorn src.api:app --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 
 `http://127.0.0.1:8000/` を開きます。テストは `python -m pytest -q`。本番用 Docker イメージの常駐 Node.js や外部 CDN は不要です。
@@ -62,7 +71,9 @@ QSV_CRONTAB_PATH=./samples/crontab QSV_TIMEZONE=Asia/Tokyo QSV_ALLOWED_PROXY_IPS
 - [今後のタスク](docs/TODO.md)
 - [仕様書](docs/SPEC.md)
 - [構成・API・制限](docs/architecture.md)
-- [ジョブ識別・重複・注釈の引き継ぎ](docs/job-identity.md)
+- [ジョブ識別・重複・表示名とタグのコピー](docs/job-identity.md)
+- [表示名・タグの API とバックアップ・復元](docs/annotations.md)
+- [worktree の QNAP 動作確認と main への復帰](docs/worktree-testing.md)
 - [QTS 実機調査状況](docs/qts-research.md)
 - [導入・更新・削除](docs/deployment.md)
 - [セキュリティ](docs/security.md)
@@ -79,6 +90,6 @@ server-a での公開用に [deploy/proxy/compose.yaml.example](deploy/proxy/com
 sudo docker compose down && sudo docker compose up -d
 ```
 
-`down -v` は Tailscale state や証明書を消すため使用しません。共有マウントへの依存とローカル配置の選択肢は [導入手順](docs/deployment.md#共有フォルダへの依存) を参照してください。
+`down -v` は注釈 DB・Tailscale state・証明書を消すため使用しません。共有マウントへの依存とローカル配置の選択肢は [導入手順](docs/deployment.md#共有フォルダへの依存) を参照してください。
 
 実稼働の `compose.yaml` と `.env` はローカルファイルとして Git 管理から除外しています。追跡対象は匿名化した設定例です。Git で設定例を更新しても、実稼働ファイルには自動反映されません。設定例との差分を確認し、実環境の値を保持して必要な変更だけを実稼働ファイルに反映してください。

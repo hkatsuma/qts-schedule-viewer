@@ -16,11 +16,21 @@ class Source(BaseModel):
     location: str
 
 
+class Tag(BaseModel):
+    id: int
+    name: str
+    version: int
+
+
 class Task(BaseModel):
     id: str
     definition_id: str | None = None
     duplicate_count: int = 1
     name: str
+    original_name: str = ''
+    display_name: str = ''
+    tags: list[Tag] = Field(default_factory=list)
+    annotation_version: int = 0
     description: str = ''
     category: str = 'system'
     provider: str = 'QTS'
