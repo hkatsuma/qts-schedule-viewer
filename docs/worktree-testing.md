@@ -65,7 +65,7 @@ qsv_test ps
 qsv_test logs --tail=50 qsv
 ```
 
-通常のブラウザ URL で確認する。タグ・表示名を保存し、`qsv_test down && qsv_test up -d --no-build` で再作成した後も残ることを確認できる。テスト版の起動に失敗した場合も、次の復帰手順を実行する。
+通常のブラウザ URL を再読み込みして確認する。タグ・表示名を保存し、`qsv_test down && qsv_test up -d --no-build` で再作成した後も残ることを確認できる。テスト版の起動に失敗した場合も、次の復帰手順を実行する。
 
 ## main の通常動作へ戻す
 
@@ -77,7 +77,7 @@ sudo docker compose ps
 sudo docker compose logs --tail=50 qsv
 ```
 
-main の復帰を確認したら一時ファイルを削除する。
+ブラウザも再読み込みし、main の画面と API の組み合わせに戻す。main の復帰を確認したら一時ファイルを削除する。
 
 ```sh
 rm -f "$QSV_TEST_OVERRIDE"
