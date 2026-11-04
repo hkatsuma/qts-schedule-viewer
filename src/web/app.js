@@ -33,60 +33,91 @@ const commandResets = new Set();
 function hideCommands() {
   for (const reset of commandResets) reset();
 }
+function collectionLabel(task) {
+  const collection=data.collections.find(c => c.collector===task.source.collector);
+  const state=states[task.collection_status] || task.collection_status;
+  const at=task.collected_at ? fmt(task.collected_at) : '不明';
+  return `${state} · 取得 ${at}${collection?.stale ? '（前回の情報）' : ''}`;
+}
+function commandIcon() {
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('aria-hidden','true');
+  svg.setAttribute('fill','none'); svg.setAttribute('stroke','currentColor');
+  svg.setAttribute('stroke-width','1.8');
+  for (const d of ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z',
+                   'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0', 'M3 3l18 18']) {
+    const path=document.createElementNS(svg.namespaceURI,'path');
+    path.setAttribute('d',d); svg.append(path);
+  }
+  return svg;
+}
 function commandControl(task,index) {
-  const card=el('article',undefined,'card');
-  card.append(el('strong',task.name));
+  const card=el('div',undefined,'command-row');
   if (!task.command_available) {
-    card.append(el('p','コマンドを分離できない設定のため、原文は表示できません。'));
+    card.append(el('span','コマンド: 表示不可'));
     return card;
   }
-  const button=el('button','コマンドを表示'), status=el('p'), body=el('pre');
-  body.id=`command-${index}`; body.hidden=true;
+  const button=el('button',undefined,'command-toggle'), status=el('p',undefined,'command-status'), body=el('span','非表示','command-value');
+  const icon=commandIcon(), label=el('span','コマンド:');
+  body.id=`command-${index}`;
+  button.type='button';
+  button.append(label,body,icon);
+  const setLabel=showing => {
+    const text=showing ? 'コマンドを非表示' : 'コマンドを表示';
+    button.setAttribute('aria-label',text); button.title=text;
+    button.setAttribute('aria-expanded',String(showing));
+    icon.lastElementChild.style.display=showing ? '' : 'none';
+  };
   status.setAttribute('role','status');
   button.setAttribute('aria-controls',body.id);
   let controller=null, visible=false;
   const reset=() => {
     controller?.abort(); controller=null; visible=false;
-    body.textContent=''; body.hidden=true; status.textContent='';
-    button.textContent='コマンドを表示'; button.setAttribute('aria-expanded','false');
+    body.textContent='非表示'; status.textContent='';
+    setLabel(false);
   };
   reset(); commandResets.add(reset);
   button.onclick=async() => {
     if (visible) {reset(); return;}
     visible=true;
     const request=new AbortController(); controller=request;
-    button.textContent='コマンドを非表示'; button.setAttribute('aria-expanded','true');
+    setLabel(true);
     status.textContent='読み込み中…';
     try {
       const response=await fetch(`/api/schedules/${encodeURIComponent(task.id)}/command`,{signal:request.signal,cache:'no-store'});
       if (!response.ok) throw new Error();
       const result=await response.json();
       if (controller!==request || request.signal.aborted) return;
-      body.textContent=result.command; body.hidden=false;
-      status.textContent=result.stale ? '収集に失敗したため、前回取得したコマンドを表示しています。' : '収集時点のコマンドです。実行・編集はできません。';
+      body.textContent=result.command;
+      status.textContent=result.stale ? '収集に失敗したため、前回取得したコマンドを表示しています。' : '';
     } catch {
       if (controller!==request || request.signal.aborted) return;
       reset(); status.textContent='コマンドを取得できません。スケジュールを再取得してから開き直してください。';
     }
   };
-  card.append(button,status,body);
+  card.append(button,status);
   return card;
 }
 function showTasks(tasks,title,context) {
   if (!tasks.length) return;
   hideCommands(); commandResets.clear();
-  $('detail-commands').replaceChildren(...tasks.map(commandControl));
   $('detail-title').textContent = title || (tasks.length === 1 ? tasks[0].name : `${tasks.length} 件のタスク`);
-  const descriptions = tasks.map(t => [
-    t.name,`カテゴリ: ${categories[t.category] || t.category}`,`提供元: ${t.provider}`,
-    `有効状態: ${t.enabled === null ? '不明' : t.enabled ? '有効' : '無効'}`,
-    `条件: ${t.schedule.description}`,`cron: ${t.schedule.expression}`,`タイムゾーン: ${t.schedule.timezone}`,
-    `実行対象日の回数（通常日）: ${t.runs_per_active_day ?? '算出不可'}`,
-    `次回: ${t.next_runs.map(fmt).join(' / ') || '算出不可'}`,
-    `取得元: ${t.source.location}`,`設定場所: ${t.configuration_location}`,`コマンド: ${t.command}`,
-    `取得状態: ${states[t.collection_status] || t.collection_status}`,...t.warnings
-  ].join('\n'));
-  $('detail-body').textContent = [context,...descriptions].filter(Boolean).join('\n\n────────\n\n');
+  const cards=tasks.map((t,index) => {
+    const card=el('article',undefined,'task-detail');
+    if (tasks.length>1) card.append(el('h3',t.name));
+    const description=[
+      `カテゴリ: ${categories[t.category] || t.category}`,`提供元: ${t.provider}`,
+      `有効状態: ${t.enabled === null ? '不明' : t.enabled ? '有効' : '無効'}`,
+      `条件: ${t.schedule.description}`,`cron: ${t.schedule.expression}`,
+      `実行対象日の回数（通常日）: ${t.runs_per_active_day ?? '算出不可'}`,
+      `次回: ${t.next_runs.map(fmt).join(' / ') || '算出不可'}`,
+      `取得元: ${t.source.location}`,`設定場所: ${t.configuration_location}`
+    ].join('\n');
+    card.append(el('pre',description),commandControl(t,index),
+                el('pre',[`取得状態: ${collectionLabel(t)}`,...t.warnings].join('\n'),'task-collection'));
+    return card;
+  });
+  $('detail-body').replaceChildren(...(context ? [el('p',context)] : []),...cards);
   $('detail').showModal();
 }
 function closeDetail() {hideCommands(); $('detail').close();}
@@ -104,7 +135,7 @@ function rows() {
     button.onclick = () => showTasks([t]);
     first.append(button,el('small',categories[t.category] || t.category));
     tr.append(first);
-    const values = [`${t.provider} / ${t.enabled === null ? '不明' : t.enabled ? '有効' : '無効'}`,`${t.schedule.description}\n${t.schedule.expression}`,fmt(t.next_runs[0]),`${t.configuration_location}\n${t.source.location}`,states[t.collection_status] || t.collection_status];
+    const values = [`${t.provider} / ${t.enabled === null ? '不明' : t.enabled ? '有効' : '無効'}`,`${t.schedule.description}\n${t.schedule.expression}`,fmt(t.next_runs[0]),`${t.configuration_location}\n${t.source.location}`,collectionLabel(t)];
     for (const value of values) tr.append(el('td',value));
     $('rows').append(tr);
   }

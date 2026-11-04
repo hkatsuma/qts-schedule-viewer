@@ -32,8 +32,9 @@ class Task(BaseModel):
     command_available: bool = False
     # Never serialize the original command, including nested collections.
     _raw_command: str | None = PrivateAttr(default=None)
-    configuration_location: str = 'QTS / cron（管理画面の有無は実機で確認）'
+    configuration_location: str = 'QTS / cron'
     collection_status: str = 'ok'
+    collected_at: datetime | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
