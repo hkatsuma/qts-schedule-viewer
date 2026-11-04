@@ -16,6 +16,7 @@ def test_parse_stable_ids_and_secrets(tmp_path):
     line = '0 3 * * 0 /sbin/hwclock --password=SECRET; curl https://user:secret@example.org'
     result = collect(tmp_path, '# comment\nSHELL=/bin/sh\n' + line + '\n' + line)
     assert result.status == 'ok'
+    assert all(t.collected_at == NOW for t in result.tasks)
     assert len(result.tasks) == 2
     assert result.tasks[0].id != result.tasks[1].id
     assert result.tasks[0].id == collect(tmp_path, '\n\n' + line).tasks[0].id
@@ -30,6 +31,7 @@ def test_unsupported_and_empty(tmp_path):
     result = collect(tmp_path, '@reboot /example/task\n70 3 * * * /example/task\n0 3 * * * /example/task')
     assert result.status == 'partial'
     assert len(result.tasks) == 3
+    assert all(t.collected_at == NOW for t in result.tasks)
     assert [t.collection_status for t in result.tasks] == ['parse_error', 'parse_error', 'ok']
     assert CronCollector(tmp_path / 'absent', 'Asia/Tokyo').collect(NOW).status == 'unavailable'
 

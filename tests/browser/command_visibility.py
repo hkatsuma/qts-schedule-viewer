@@ -21,29 +21,39 @@ def check(page, base):
     page.goto(base)
     page.locator('[data-view=list]').click()
     page.locator('#rows button').first.click()
-    button = page.locator('#detail-commands button').first
+    button = page.locator('.command-toggle').first
     body = page.locator('#command-0')
-    expect(button).to_have_text('コマンドを表示')
-    expect(body).to_be_hidden()
+    expect(button).to_have_attribute('aria-label','コマンドを表示')
+    expect(body).to_have_text('非表示')
     assert not requests
+    detail = page.locator('#detail-body')
+    expect(detail).not_to_contain_text('タイムゾーン:')
+    expect(detail).not_to_contain_text('管理画面の有無')
+    expect(detail).not_to_contain_text('機密情報保護')
+    expect(page.locator('#notice')).to_contain_text('Asia/Tokyo')
+    expect(page.locator('.task-collection')).to_contain_text('正常 · 取得 ')
+    expect(page.locator('#rows td').nth(5)).to_contain_text('正常 · 取得 ')
+    assert button.locator('svg').count() == 1
     button.click()
     expect(body).to_have_text(RAW)
     assert len(requests) == 1
+    expect(detail).not_to_contain_text('収集時点のコマンドです')
+    expect(detail).not_to_contain_text('実行・編集はできません')
     assert page.locator('#detail img').count() == 0
     button.click()
-    expect(body).to_have_text('')
-    expect(body).to_be_hidden()
+    expect(body).to_have_text('非表示')
+    expect(body).to_have_text('非表示')
     button.click()
     expect(body).to_have_text(RAW)
     page.keyboard.press('Escape')
-    expect(body).to_have_text('')
+    expect(body).to_have_text('非表示')
     page.locator('#rows button').first.click()
-    expect(button).to_have_text('コマンドを表示')
+    expect(button).to_have_attribute('aria-label','コマンドを表示')
     assert len(requests) == 2
     button.click()
     expect(body).to_have_text(RAW)
     page.locator('#close').click()
-    expect(body).to_have_text('')
+    expect(body).to_have_text('非表示')
 
     # A late response must not repopulate a closed or refreshed dialog.
     held = []
@@ -55,23 +65,29 @@ def check(page, base):
     assert held
     page.locator('#close').click()
     held.pop().fulfill(json={'id': 'unused', 'command': RAW, 'stale': False})
-    expect(body).to_have_text('')
+    expect(body).to_have_text('非表示')
     page.locator('#rows button').first.click()
     button.click()
     page.wait_for_timeout(100)
     page.evaluate('load()')
     held.pop().fulfill(json={'id': 'unused', 'command': RAW, 'stale': False})
-    expect(body).to_have_text('')
+    expect(body).to_have_text('非表示')
     expect(button).to_have_attribute('aria-expanded', 'false')
     page.unroute('**/command')
 
     # Independent controls for several tasks grouped in one timeline marker.
     page.evaluate('showTasks(data.tasks)')
-    buttons = page.locator('#detail-commands button')
+    buttons = page.locator('.command-toggle')
     assert buttons.count() == 2
+    assert page.locator('.task-detail').count() == 2
+    for card in page.locator('.task-detail').all():
+        assert card.locator('.command-toggle').count() == 1
+        assert card.locator('.task-collection').count() == 1
     buttons.nth(1).click()
     expect(page.locator('#command-1')).to_have_text(RAW)
-    expect(page.locator('#command-0')).to_have_text('')
+    expect(page.locator('#command-0')).to_have_text('非表示')
+    page.set_viewport_size({'width': 390, 'height': 844})
+    assert page.locator('#detail').evaluate('(node) => node.scrollWidth <= node.clientWidth')
     page.locator('#close').click()
     assert not errors, errors
     assert 'PRIVATE_MARKER' not in page.content()

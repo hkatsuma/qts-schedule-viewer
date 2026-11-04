@@ -46,12 +46,16 @@ def test_command_snapshot_refresh_and_stale_cache(tmp_path):
         assert client.get(route).json()['command'] == RAW
         path.unlink()
         assert client.post('/api/refresh').status_code == 200
+        stale_task = client.get('/api/schedules').json()['tasks'][0]
+        assert stale_task['collected_at'] == task['collected_at']
+        assert task['collected_at'] is not None
         assert client.get(route).json()['stale'] is True
         assert client.get(route).json()['command'] == RAW
         path.write_text('0 3 * * * /example/changed')
         assert client.post('/api/refresh').status_code == 200
         assert client.get(route).status_code == 404
         changed = client.get('/api/schedules').json()['tasks'][0]
+        assert changed['collected_at'] != task['collected_at']
         assert client.get(f"/api/schedules/{changed['id']}/command").json()['command'] == '/example/changed'
     with TestClient(app, client=('192.168.0.3', 12345)) as client:
         response = client.get(route, headers={'X-Forwarded-For': PEER})

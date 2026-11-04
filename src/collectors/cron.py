@@ -17,7 +17,7 @@ def safe_command(command: str) -> str:
     known = {'/sbin/vs_refresh': 'QTS ストレージ更新',
              '/sbin/hwclock': 'ハードウェア時計',
              '/usr/sbin/ntpdate': '時刻同期'}
-    return f'{first} [引数・後続コマンド非表示]' if first in known else '[コマンド非表示: 機密情報保護]'
+    return f'{first} [引数・後続コマンド非表示]' if first in known else '[コマンド非表示]'
 
 
 class CronCollector:
@@ -65,7 +65,8 @@ class CronCollector:
             task = Task(id=f'cron-{digest}-{duplicates[digest]}', name=f'cron ジョブ（行 {number}）',
                         schedule=Schedule(expression=expression, timezone=self.timezone,
                                           description=describe(expression) if len(expression.split()) == 5 else '未対応の記法'),
-                        source=Source(collector='cron', location='/etc/config/crontab'), command=safe_command(command))
+                        source=Source(collector='cron', location='/etc/config/crontab'), command=safe_command(command),
+                        collected_at=now)
             if expression != '@unsupported':
                 # Preserve the command from this snapshot, even if its cron
                 # fields fail validation. Unseparable rows remain unavailable.
