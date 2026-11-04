@@ -62,6 +62,7 @@ QSV_CRONTAB_PATH=./samples/crontab QSV_TIMEZONE=Asia/Tokyo QSV_ALLOWED_PROXY_IPS
 - [今後のタスク](docs/TODO.md)
 - [仕様書](docs/SPEC.md)
 - [構成・API・制限](docs/architecture.md)
+- [ジョブ識別・重複・注釈の引き継ぎ](docs/job-identity.md)
 - [QTS 実機調査状況](docs/qts-research.md)
 - [導入・更新・削除](docs/deployment.md)
 - [セキュリティ](docs/security.md)

@@ -38,6 +38,8 @@ Collector 単位で状態・前回状態・最終正常取得日時を持つ。�
 
 GET /api/schedules は安全化済みの一覧と収集状態、GET /api/timeline?start=YYYY-MM-DD は7日分の予定、GET /api/month?month=YYYY-MM-DD は指定月の日別タスク集計、GET /api/export.csv は絞り込み適用後の CSV。POST /api/refresh はキャッシュの再収集のみ。HTTP リクエストからファイルパスを変更できない。
 
+Task.definition_id は注釈用の定義 ID、Task.id は同一定義の出現連番を付けた表示行 ID。duplicate_count は収集範囲の重複行数。同一定義の表示行を統合せず、タイムライン・コマンド API には表示行 ID を使う。識別の条件と注釈の保持・引き継ぎ仕様は [job-identity.md](job-identity.md) を参照。
+
 GET /api/schedules/{task_id}/command は1件のコマンド全文と stale を返す。原文は Task の PrivateAttr として収集結果と同じメモリキャッシュに保持し、通常の JSON・CSV・検索には含めない。API はファイルを読み直さず、一覧と同じ収集時点の定義を返す。読み取り失敗時は前回の原文を保持して stale=true を返す。再収集で消えた ID や原文を分離できないタスクは404。取得可能性は一覧の command_available で示す。
 
 cron の月日と曜日の両方が指定されている場合は OR。予定は実行実績ではない。DST の存在しない時刻は除外し、繰り返す時刻は両方を予定候補とする。実際の QTS cron デーモンによる DST 処理は未検証。NAS のタイムゾーンは自動推測せず QSV_TIMEZONE に明示する。OSのタイムゾーン変更後は設定更新と再起動が必要。
