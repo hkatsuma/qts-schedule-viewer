@@ -66,9 +66,9 @@ def check(page, base, path):
     page.locator('#refresh').click()
     page.locator('[data-view=annotations]').click()
     source=page.locator('.annotation-record').filter(has=page.get_by_role('heading', name='他の編集', exact=True))
-    expect(source).to_contain_text('現在は見つからない定義')
+    expect(source).to_contain_text('現在は見つからないジョブ')
     source.locator('select').select_option(index=1)
-    source.get_by_role('button', name='注釈をコピー', exact=True).click()
+    source.get_by_role('button', name='表示名とタグをコピー', exact=True).click()
     expect(page.locator('.annotation-record')).to_have_count(2)
     # Rename and delete tags globally, including archived annotations.
     tag_form=page.locator('.tag-management-row').filter(has=page.get_by_role('textbox', name='タグ名: 保守', exact=True))

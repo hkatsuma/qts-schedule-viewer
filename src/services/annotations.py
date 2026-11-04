@@ -79,7 +79,7 @@ class AnnotationStore:
         if row is None:
             raise AnnotationError(404, '定義が見つかりません。再取得してください')
         if version is not None and row['version'] != version:
-            raise AnnotationError(409, '他の操作で注釈が更新されました。読み直してください')
+            raise AnnotationError(409, '他の操作で表示名またはタグが更新されました。読み直してください')
         return row
 
     def observe(self, definition_ids: set[str], status: str, at: str, *, stale=False):
@@ -160,18 +160,18 @@ class AnnotationStore:
 
     def copy(self, source_id, target_id, source_version, target_version, *, overwrite=False):
         if source_id == target_id:
-            raise AnnotationError(422, '別の移行先を選択してください')
+            raise AnnotationError(422, '別のコピー先のジョブを選択してください')
         with self.connection(write=True) as conn:
             source = self._definition(conn, source_id, source_version)
             target = self._definition(conn, target_id, target_version)
             if target['presence'] != 'present':
-                raise AnnotationError(409, '移行先の定義を確認できません。再取得してください')
+                raise AnnotationError(409, 'コピー先のジョブを確認できません。再取得してください')
             ids = [r[0] for r in conn.execute('SELECT tag_id FROM definition_tags WHERE definition_id=?', (source_id,))]
             target_tags = conn.execute('SELECT 1 FROM definition_tags WHERE definition_id=? LIMIT 1', (target_id,)).fetchone()
             if not source['display_name'] and not ids:
-                raise AnnotationError(422, 'コピーする注釈がありません')
+                raise AnnotationError(422, 'コピーする表示名とタグがありません')
             if not overwrite and (target['display_name'] or target_tags):
-                raise AnnotationError(409, '移行先に注釈があります。置き換えを明示してください')
+                raise AnnotationError(409, 'コピー先に表示名またはタグが設定されています。置き換えを明示してください')
             version = self._revision(conn)
             conn.execute('UPDATE definitions SET display_name=?,version=? WHERE definition_id=?', (source['display_name'], version, target_id))
             conn.execute('DELETE FROM definition_tags WHERE definition_id=?', (target_id,))

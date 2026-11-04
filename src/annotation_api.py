@@ -40,7 +40,7 @@ def annotation_router(store: AnnotationStore, service: CollectionService):
 
     def current(key):
         if service.annotation_error:
-            raise HTTPException(503, '注釈の収集状態を確認できません')
+            raise HTTPException(503, '表示名とタグの状態を確認できません')
         if not any(not c.stale and t.definition_id == key for c in service.results.values() for t in c.tasks):
             raise HTTPException(409, '現在の定義を確認できません。再取得してください')
 

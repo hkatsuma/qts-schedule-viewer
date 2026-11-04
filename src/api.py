@@ -67,7 +67,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
 
     @app.exception_handler(sqlite3.Error)
     async def database_error(request, error):
-        return JSONResponse({'detail': '注釈DBを利用できません。保存領域を確認してください'}, status_code=503)
+        return JSONResponse({'detail': '表示名とタグの保存データを利用できません。保存領域を確認してください'}, status_code=503)
 
 
     @app.middleware('http')
@@ -125,7 +125,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
     def tasks(q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all',
               tag: list[int] = (), tag_match: Literal['any', 'all'] = 'any', snapshot=None):
         if service.annotation_error:
-            raise HTTPException(503, '注釈の収集状態を確認できません。再取得してください')
+            raise HTTPException(503, '表示名とタグの状態を確認できません。再取得してください')
         snapshot = snapshot if snapshot is not None else store.snapshot()
         result = []
         for collection in service.results.values():
@@ -166,7 +166,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
     async def refresh(request: Request):
         await service.refresh()
         if service.annotation_error:
-            raise HTTPException(503, '注釈DBの更新に失敗しました。保存領域を確認してください')
+            raise HTTPException(503, '表示名とタグの更新に失敗しました。保存領域を確認してください')
         return {'status': 'ok'}
 
     @app.get('/api/schedules/{task_id}/command')

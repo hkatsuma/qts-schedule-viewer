@@ -27,9 +27,9 @@ QNAP 上の Container Station / Docker で動く、NAS 設定を読み取り専�
 
 ## タグ・表示名
 
-詳細画面の「表示名・タグを編集」で保存します。タグは「タグ・表示名」画面で作成・名前変更・削除でき、フィルタでは複数選択して「いずれか一致（OR）／すべて一致（AND）」を選びます。表示名とタグ条件は一覧・週間・月間・CSV に反映します。同一定義の重複行は注釈を共有し、実行予定は各行を残します。
+詳細画面の「表示名・タグを編集」で保存します。タグは「タグ・表示名」画面で作成・名前変更・削除でき、フィルタでは複数選択して「いずれか一致（OR）／すべて一致（AND）」を選びます。表示名とタグ条件は一覧・週間・月間・CSV に反映します。同一定義の重複行は表示名とタグを共有し、実行予定は各行を残します。
 
-時刻やコマンドが変更された定義へ注釈は自動移行しません。「タグ・表示名」画面から移行元と移行先を選んでコピーします。見つからなくなった定義の注釈も保持します。保存先は QNAP のローカル Docker volume 上の SQLite で、QTS の設定ファイルには書き込みません。
+時刻やコマンドが変更された別のジョブへ、表示名とタグは自動では移しません。「タグ・表示名」画面からコピー元とコピー先のジョブを選んでコピーします。見つからなくなったジョブの表示名とタグも保持します。保存先は QNAP のローカル Docker volume 上の SQLite で、QTS の設定ファイルには書き込みません。
 
 ## QNAP への導入
 
@@ -71,8 +71,8 @@ QSV_DB_PATH=/tmp/qsv-dev.sqlite3 QSV_CRONTAB_PATH=./samples/crontab QSV_TIMEZONE
 - [今後のタスク](docs/TODO.md)
 - [仕様書](docs/SPEC.md)
 - [構成・API・制限](docs/architecture.md)
-- [ジョブ識別・重複・注釈の引き継ぎ](docs/job-identity.md)
-- [注釈・タグの API とバックアップ・復元](docs/annotations.md)
+- [ジョブ識別・重複・表示名とタグのコピー](docs/job-identity.md)
+- [表示名・タグの API とバックアップ・復元](docs/annotations.md)
 - [worktree の QNAP 動作確認と main への復帰](docs/worktree-testing.md)
 - [QTS 実機調査状況](docs/qts-research.md)
 - [導入・更新・削除](docs/deployment.md)

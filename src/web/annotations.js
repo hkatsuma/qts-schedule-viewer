@@ -67,7 +67,7 @@ function annotationTargetLabel(task) {
 }
 async function renderAnnotationManager(ticket) {
   const [response, schedules]=await Promise.all([fetch('/api/annotations'),fetch('/api/schedules?frequency=all')]);
-  if (!response.ok || !schedules.ok) throw new Error('注釈の取得に失敗しました');
+  if (!response.ok || !schedules.ok) throw new Error('表示名とタグの取得に失敗しました');
   const annotations=await response.json(), all=await schedules.json();
   if (ticket!==revision) return;
   const tagRows=all.tags.map(tag => {
@@ -94,22 +94,22 @@ async function renderAnnotationManager(ticket) {
     const task=current.get(annotation.definition_id), card=el('article',undefined,'card annotation-record');
     card.append(el('h3',annotation.display_name || task?.name || '表示名なし'),
       el('p',`タグ: ${annotation.tags.map(t => t.name).join(' / ') || 'なし'}`),
-      el('p',`${{present:'現在の定義',absent:'現在は見つからない定義',unknown:'現在の有無は未確認'}[annotation.presence]} · 最終取得 ${fmt(annotation.last_seen_at)}`));
+      el('p',`${{present:'現在のジョブ',absent:'現在は見つからないジョブ',unknown:'現在の有無は未確認'}[annotation.presence]} · 最終取得 ${fmt(annotation.last_seen_at)}`));
     if (!task) card.append(el('small',annotation.definition_id));
     if (task) card.append(annotationEditButton(task));
-    const form=el('form',undefined,'annotation-copy'), select=el('select'), overwrite=el('input'), overwriteLabel=el('label'), copy=el('button','注釈をコピー'), remove=el('button','注釈を削除'), message=el('p');
-    select.setAttribute('aria-label','引き継ぎ先'); select.required=true; select.add(new Option('引き継ぎ先を選択',''));
+    const form=el('form',undefined,'annotation-copy'), select=el('select'), overwrite=el('input'), overwriteLabel=el('label'), copy=el('button','表示名とタグをコピー'), remove=el('button','表示名とタグをリセット'), message=el('p');
+    select.setAttribute('aria-label','コピー先のジョブ'); select.required=true; select.add(new Option('コピー先のジョブを選択',''));
     const targets=new Map();
     for (const [key,value] of current) {
       const record=byDefinition.get(key);
       if (key===annotation.definition_id || record?.presence!=='present') continue;
       targets.set(key,value); select.add(new Option(annotationTargetLabel(value),key));
     }
-    overwrite.type='checkbox'; overwriteLabel.append(overwrite,el('span','移行先の注釈を置き換える'));
+    overwrite.type='checkbox'; overwriteLabel.append(overwrite,el('span','コピー先の表示名とタグを置き換える'));
     remove.type='button'; message.setAttribute('role','status');
     form.onsubmit=async event => {
       event.preventDefault(); const target=targets.get(select.value); if (!target) return;
-      if (!confirm(`「${annotation.display_name || task?.name || '表示名なし'}」の注釈を「${annotationTargetLabel(target)}」の ${target.duplicate_count} 行にコピーしますか？`)) return;
+      if (!confirm(`「${annotation.display_name || task?.name || '表示名なし'}」の表示名とタグを「${annotationTargetLabel(target)}」の ${target.duplicate_count} 行にコピーしますか？`)) return;
       copy.disabled=true;
       try {
         await writeAnnotation('/api/annotations/copy','POST',{source_id:annotation.definition_id,target_id:target.definition_id,
@@ -118,7 +118,7 @@ async function renderAnnotationManager(ticket) {
       } catch(error) {message.textContent=error.message;} finally {copy.disabled=false;}
     };
     remove.onclick=async() => {
-      if (!confirm('この定義の表示名とタグの関連付けを削除しますか？')) return;
+      if (!confirm('このジョブの表示名を元に戻し、タグをすべて外しますか？')) return;
       remove.disabled=true;
       try {await writeAnnotation('/api/annotations/'+encodeURIComponent(annotation.definition_id),'DELETE',{version:annotation.version}); await load();}
       catch(error) {message.textContent=error.message;} finally {remove.disabled=false;}
