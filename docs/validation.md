@@ -2,7 +2,7 @@
 
 ## 自動テスト
 
-Python 3.14.4 / FastAPI 0.162.0 / croniter 6.2.4 で pytest **95件成功**。
+Python 3.14.4 / FastAPI 0.162.0 / croniter 6.2.4 で pytest **110件成功**。
 
 - コマンド全文の操作時取得、通常 JSON・検索・CSV・repr への混入防止、収集時点との整合・古いキャッシュ・変更後 ID の404
 - cron のコメント・環境変数・不正記法、安定 ID、秘密情報の非表示、件数・サイズ上限
@@ -14,6 +14,11 @@ Python 3.14.4 / FastAPI 0.162.0 / croniter 6.2.4 で pytest **95件成功**。
 - 月初・月末・うるう日、月日/曜日 OR、DST 日の集計と実予定の一致
 - 毎分タスクの月間43,200回を30行に集約し、低頻度タスクが週間上限に巻き込まれないこと
 - 一覧・タイムライン・CSV、フィルタ、異なる Origin の再取得拒否
+- タグ作成・名前変更・削除、注釈の共有・OR/AND 条件・全表示とCSVへの反映、入力と件数の制限
+- 同一DBを使うアプリ再生成後の保持、同時更新の競合、タグ削除後の古い編集の拒否
+- partial・収集失敗・不在と再登場、版付きの明示コピー・置換指定・移行元保持
+- 書き込みAPIのIP・Origin・JSON形式・本文サイズ制限、DB障害503と復旧、起動時のDB権限エラー
+- WAL稼働中の整合したバックアップ、停止中復元、不正・未知スキーマの復元拒否
 - Collector の例外隔離、読み取り失敗時のキャッシュ表示
 - IP allowlist の IPv4 / IPv6 / IPv4-mapped IPv6、空の全拒否、不正設定の拒否
 - 全ルートの IP 制限、転送ヘッダー偽装の無効化、loopback の healthz 例外
@@ -37,7 +42,10 @@ API テストは開発環境のサンドボックス外で実行している。�
 - 個別ジョブのタイムゾーンと冗長な説明の省略、親画面の共通タイムゾーン表示
 - 非表示・閉じる・Escape・再取得時の全文消去、遅れて届いた応答による再表示の防止、複数タスクの独立した操作
 
-コマンド表示の操作検証は `tests/browser/command_visibility.py` で再実行できる。開発環境に Playwright と Chromium を用意し、`python tests/browser/command_visibility.py` を実行する。人工 crontab と一時的な loopback サーバーを使い、稼働サービスには接続しない。
+- タグ・表示名の編集、重複行への共有、タグ絞り込み、編集競合時の入力保持と読み直し
+- 不在定義からの明示コピー、タグの名前変更・削除、HTML 風の表示名の安全な描画、スマートフォン幅
+
+コマンド表示の操作検証は `tests/browser/command_visibility.py` で再実行できる。開発環境に Playwright と Chromium を用意し、`python tests/browser/command_visibility.py` と `python tests/browser/annotations.py` を実行する。人工 crontab と一時的な loopback サーバーを使い、稼働サービスには接続しない。
 
 ブラウザと依存ライブラリ・日本語フォントは /tmp の検証用配置のみを使用し、ホストOSや実稼働環境へインストールしていない。QNAP 上のコンテナを再ビルドした後の新しい UI の確認は別途必要。
 
@@ -48,6 +56,8 @@ Git 追跡ファイルだけを一時ディレクトリに配置し、ドキュ�
 - 設定例だけの状態から、ファイル指定なしの docker compose config が成功
 - サンプルの bind IP、プロキシ IP、Tailnet IP・ドメイン・upstream が意図どおり反映
 - QNAP のビルドコンテキストはリポジトリのルート、Caddyfile の bind 元は deploy/proxy 内に解決
+- 注釈用の /data volume、read-only root、非 root UID/GID、cap_drop=ALL を構文展開で確認
+- worktree 用 override で /data が専用の qsv-test-data に置き換わり、main と別プロジェクトの volume 名になることを確認
 - 初期化を繰り返しても設定済みの compose.yaml / .env は上書きしない
 
 実稼働の Compose・Caddyfile・.env のハッシュが不変であることも確認済み。これは Compose の展開検証であり、コンテナの再起動試験ではない。
@@ -76,3 +86,5 @@ Git 追跡ファイルだけを一時ディレクトリに配置し、ドキュ�
 - NAS と server-a の再起動後の復旧
 
 導入時の確認手順は [deployment.md](deployment.md) を参照。これらの実機確認が済むまで初期バージョンの受け入れ完了とはしない。
+
+QNAP での注釈用 volume の所有者、実コンテナ再作成、ホスト再起動後の保持とバックアップ復元は実機確認が必要。アプリ再生成のテストと Compose 構文検証は実施済みだが、開発ホストから QNAP の Docker を操作して検証はしていない。

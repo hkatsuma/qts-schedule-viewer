@@ -1,5 +1,6 @@
 import asyncio
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field
 from src.services.annotations import AnnotationStore
 from src.services.collection import CollectionService
@@ -10,7 +11,7 @@ class Input(BaseModel):
 
 
 class Version(Input):
-    version: int = Field(ge=1)
+    version: int = Field(ge=1, le=2**63-1)
 
 
 class TagName(Input):
@@ -29,8 +30,8 @@ class AnnotationUpdate(Version):
 class AnnotationCopy(Input):
     source_id: str = Field(pattern=r'^cron-v1-[0-9a-f]{64}$')
     target_id: str = Field(pattern=r'^cron-v1-[0-9a-f]{64}$')
-    source_version: int = Field(ge=1)
-    target_version: int = Field(ge=1)
+    source_version: int = Field(ge=1, le=2**63-1)
+    target_version: int = Field(ge=1, le=2**63-1)
     overwrite: bool = False
 
 
@@ -52,11 +53,11 @@ def annotation_router(store: AnnotationStore, service: CollectionService):
         return store.create_tag(body.name)
 
     @router.put('/tags/{tag_id}')
-    def rename_tag(tag_id: int, body: TagUpdate):
+    def rename_tag(tag_id: Annotated[int, Path(ge=1, le=2**63-1)], body: TagUpdate):
         return store.change_tag(tag_id, body.version, body.name)
 
     @router.delete('/tags/{tag_id}')
-    def delete_tag(tag_id: int, body: Version):
+    def delete_tag(tag_id: Annotated[int, Path(ge=1, le=2**63-1)], body: Version):
         return store.change_tag(tag_id, body.version)
 
     @router.get('/annotations')

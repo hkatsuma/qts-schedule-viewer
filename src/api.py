@@ -92,11 +92,13 @@ def create_app(path: Path | None = None, timezone: str | None = None,
                     response = JSONResponse({'detail': 'JSON形式で送信してください'}, status_code=415)
                 else:
                     body = bytearray()
+                    oversized = False
                     async for chunk in request.stream():
-                        body.extend(chunk)
-                        if len(body) > 16384:
+                        if len(body) + len(chunk) > 16384:
+                            oversized = True
                             break
-                    if len(body) > 16384:
+                        body.extend(chunk)
+                    if oversized:
                         response = JSONResponse({'detail': 'リクエストが大きすぎます'}, status_code=413)
                     else:
                         request._body = bytes(body)
@@ -150,7 +152,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         return {'status': 'ok'}
 
     @app.get('/api/schedules')
-    def schedules(q: str = Query('', max_length=200), category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=64), tag_match: Literal['any', 'all'] = 'any'):
+    def schedules(q: str = Query('', max_length=200), category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=200), tag_match: Literal['any', 'all'] = 'any'):
         snapshot = store.snapshot()
         matching = tasks(q, category, provider, enabled, tag=tag, tag_match=tag_match, snapshot=snapshot)
         visible = [task for task in matching if frequency_matches(task, frequency)]
@@ -163,6 +165,8 @@ def create_app(path: Path | None = None, timezone: str | None = None,
     @app.post('/api/refresh')
     async def refresh(request: Request):
         await service.refresh()
+        if service.annotation_error:
+            raise HTTPException(503, '注釈DBの更新に失敗しました。保存領域を確認してください')
         return {'status': 'ok'}
 
     @app.get('/api/schedules/{task_id}/command')
@@ -178,7 +182,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         raise HTTPException(404, 'タスクが見つかりません。再取得してください')
 
     @app.get('/api/timeline')
-    def timeline(start: date, q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=64), tag_match: Literal['any', 'all'] = 'any'):
+    def timeline(start: date, q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=200), tag_match: Literal['any', 'all'] = 'any'):
         if not 1970 <= start.year <= 2199:
             raise HTTPException(422, '表示日は1970年から2199年の範囲で指定してください')
         begin = datetime.combine(start, time(), ZoneInfo(zone))
@@ -202,7 +206,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         return {'start': begin, 'end': end, 'events': events, 'truncated': limited, 'timezone': zone}
 
     @app.get('/api/month')
-    def month(month: date, q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=64), tag_match: Literal['any', 'all'] = 'any'):
+    def month(month: date, q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=200), tag_match: Literal['any', 'all'] = 'any'):
         if not 1970 <= month.year <= 2199:
             raise HTTPException(422, '表示月は1970年から2199年の範囲で指定してください')
         begin = datetime.combine(month.replace(day=1), time(), ZoneInfo(zone))
@@ -216,7 +220,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
         return {'start': begin, 'end': end, 'days': days, 'timezone': zone}
 
     @app.get('/api/export.csv')
-    def export(q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=64), tag_match: Literal['any', 'all'] = 'any'):
+    def export(q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all', tag: list[int] = Query(default=[], max_length=200), tag_match: Literal['any', 'all'] = 'any'):
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['名前', 'カテゴリ', '提供元', '有効状態', 'cron式', 'タイムゾーン', '次回実行予定', '設定場所', '取得元', '取得状態', 'コマンド（非表示）', 'タグ', '元の名前'])

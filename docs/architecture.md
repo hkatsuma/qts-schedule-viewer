@@ -30,7 +30,7 @@ server-a が停止すると Tailnet から閲覧できなくなるが、QNAP の
 QNAP 用の compose.yaml.example と server-a 用の deploy/proxy/compose.yaml.example を配布する。各ディレクトリで compose.yaml にコピーし、Git 管理外の .env に実環境の値を設定する。QNAP は指定 LAN IP でバックエンドを公開し、server-a の Caddy は LAN upstream へ中継する。IP・ポート・証明書等の実機設定は [deployment.md](deployment.md) を参照。
 
 
-Collector → 共通 Pydantic モデル → メモリキャッシュ → FastAPI → 外部依存のない HTML / CSS / JavaScript。起動時と既定300秒ごと、手動操作で収集する。スケジュールの変更やジョブ実行は行わない。分類が実証できていない cron は system として表示する。
+Collector → 共通 Pydantic モデル → メモリキャッシュ → SQLite の注釈を適用 → FastAPI → 外部依存のない HTML / CSS / JavaScript。起動時と既定300秒ごと、手動操作で収集する。スケジュールの変更やジョブ実行は行わない。分類が実証できていない cron は system として表示する。
 
 Collector 単位で状態・前回状態・最終正常取得日時を持つ。読み取り失敗時は前回タスクを残し stale を表示する。部分解析時は現在読めた行を表示し、古いタスクと合成しない。各 Task の collected_at は、そのデータを取得した収集の開始時刻。読み取り失敗時は前回タスクの取得時刻も維持し、一覧・詳細の取得状態に併記する。キャッシュは再起動で消える。
 
@@ -43,6 +43,14 @@ Task.definition_id は注釈用の定義 ID、Task.id は同一定義の出現�
 GET /api/schedules/{task_id}/command は1件のコマンド全文と stale を返す。原文は Task の PrivateAttr として収集結果と同じメモリキャッシュに保持し、通常の JSON・CSV・検索には含めない。API はファイルを読み直さず、一覧と同じ収集時点の定義を返す。読み取り失敗時は前回の原文を保持して stale=true を返す。再収集で消えた ID や原文を分離できないタスクは404。取得可能性は一覧の command_available で示す。
 
 cron の月日と曜日の両方が指定されている場合は OR。予定は実行実績ではない。DST の存在しない時刻は除外し、繰り返す時刻は両方を予定候補とする。実際の QTS cron デーモンによる DST 処理は未検証。NAS のタイムゾーンは自動推測せず QSV_TIMEZONE に明示する。OSのタイムゾーン変更後は設定更新と再起動が必要。
+
+## 注釈の永続化
+
+SQLite の `definition_id` にタグ・表示名を関連付け、応答用のタスクコピーに適用する。Collector の設定情報やキャッシュを書き換えず、同一定義の各表示行に共通の注釈を返す。表示名は name、取得元の名前は original_name、編集用の版は annotation_version に返す。DB にコマンド・環境変数・cron 式は保存しない。
+
+QNAP ローカル Docker volume の `/data/qsv.sqlite3` に書き込み、ほかの root filesystem は read-only を維持する。注釈の保存・コピーは収集と同じサービスロック下で現在の定義を再検証し、SQLite のトランザクション内で版を照合する。競合409、保存領域の障害503を返す。タグ API、明示コピー、注釈の不在判定、バックアップ・復元は [annotations.md](annotations.md) を参照。
+
+一覧・週間・月間・CSV は `tag=ID` の複数指定と `tag_match=any|all` に対応する。未選択は制限なし。タグ・表示名を通常の全文検索にも含め、タグ条件を頻度・カテゴリ等の条件と組み合わせる。ブラウザ側の選択はページ内のみに保持する。
 
 ## 接続元 IP の判定
 

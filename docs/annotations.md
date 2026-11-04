@@ -35,7 +35,7 @@ SQLite は WAL、接続ごとに foreign_keys を有効化し、書き込みは 
 | 注釈削除 | DELETE `/api/annotations/{definition_id}` | `version` |
 | 明示コピー | POST `/api/annotations/copy` | `source_id`, `target_id`, `source_version`, `target_version`, `overwrite`（既定 false） |
 
-注釈一覧には未編集の定義も含め、`presence` は `present` / `absent` / `unknown`、`last_seen_at` は実際に取得できた最終時刻を返す。表示名・タグを持つ定義は画面の管理対象として表示する。
+注釈一覧には取得できた未編集の定義も含め、`presence` は `present` / `absent` / `unknown`、`last_seen_at` は実際に取得できた最終時刻を返す。表示名・タグを持つ定義は画面の管理対象として表示する。保存注釈のない未確認・不在定義のレコードは削除し、未編集の定義履歴を無制限に蓄積しない。再登録時には新しい版を割り当て、古い編集の版が再利用されないようにする。
 
 注釈保存とコピー先は、直近の収集で取得できた定義に限定する。取得失敗時の古いキャッシュだけでは書き込まない。注釈削除は不在・未確認の定義にも行える。コピーは双方の版を照合し、移行先に既存注釈があれば `overwrite=true` を明示しなければ409。移行元は変更しない。収集と注釈更新は同じサービスのロック下で行い、更新時に移行先の存在を再検証する。
 
@@ -45,7 +45,7 @@ SQLite は WAL、接続ごとに foreign_keys を有効化し、書き込みは 
 
 一覧・週間・月間・CSV には表示名を反映する。Task.name は表示名があればその値、なければ取得名。`original_name` は取得名、`display_name` は利用者が保存した値。`tags` はタグ情報、`annotation_version` は編集時の版。Collector のメモリ上のタスクは書き換えない。
 
-各表示 API は繰り返し指定する `tag=ID` と `tag_match=any|all` を受け付ける。any（OR）が既定、all は全選択タグの付いた定義だけを返す。タグ未選択は制限なし、存在しない選択 ID は一致なしとして扱う。検索・実行頻度等の条件と組み合わせられ、週間の予定展開前にも適用する。CSV は適用後の表示名・タグと取得名を含み、数式開始文字をエスケープする。
+各表示 API は最大200件まで繰り返し指定する `tag=ID` と `tag_match=any|all` を受け付ける。any（OR）が既定、all は全選択タグの付いた定義だけを返す。タグ未選択は制限なし、存在しない選択 ID は一致なしとして扱う。検索・実行頻度等の条件と組み合わせられ、週間の予定展開前にも適用する。CSV は適用後の表示名・タグと取得名を含み、数式開始文字をエスケープする。
 
 ## バックアップ・復元・削除
 
@@ -70,7 +70,15 @@ sudo docker compose run --rm --no-deps --entrypoint python qsv \
 sudo docker compose up -d --no-build qsv
 ```
 
-ホストにしかバックアップがない場合は、停止前に `sudo docker compose cp "./$QSV_BACKUP" "qsv:/data/$QSV_BACKUP"` で戻す。コピー後、非 root のアプリから読み取れる所有者・権限にする。コピーを省くなら、復元用の一時コンテナへバックアップを read-only bind mount して復元元に指定してもよい。
+ホストにしかバックアップがない場合は、停止前に `sudo docker compose cp "./$QSV_BACKUP" "qsv:/data/$QSV_BACKUP"` で戻す。コピー後、停止中に非 root のアプリから読み取れる所有者にする。既定の UID/GID 10001 の例（カスタム設定なら実際の値へ置き換える）：
+
+```sh
+sudo docker compose run --rm --no-deps --user 0:0 \
+  --cap-add CHOWN --cap-add DAC_OVERRIDE --entrypoint chown qsv \
+  10001:10001 "/data/$QSV_BACKUP"
+```
+
+コピーを省くなら、復元用の一時コンテナへバックアップを read-only bind mount して復元元に指定してもよい。
 
 復元コマンドはバックアップのスキーマと整合性を検証し、停止した旧 DB を checkpoint してから、一時ファイル経由で置き換える。`--offline` は停止を利用者が確認した指定であり、稼働プロセスを自動停止する機能ではない。失敗時にはアプリを再起動する前に原因を解消する。
 

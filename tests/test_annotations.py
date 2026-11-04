@@ -171,3 +171,56 @@ def test_store_concurrent_writers_and_schema_guard(tmp_path):
         conn.execute('PRAGMA user_version=999')
     with pytest.raises(RuntimeError, match='スキーマ'):
         store.initialize()
+
+
+def test_empty_definition_cleanup_does_not_reuse_edit_versions(tmp_path):
+    store = AnnotationStore(tmp_path / 'qsv.sqlite3')
+    store.initialize()
+    store.observe({'a'}, 'ok', 'first')
+    first = store.snapshot()['annotations']['a']['version']
+    store.observe(set(), 'partial', 'unknown')
+    assert store.snapshot()['annotations'] == {}
+    store.observe({'a'}, 'ok', 'again')
+    assert store.snapshot()['annotations']['a']['version'] > first
+    with pytest.raises(AnnotationError) as conflict:
+        store.update('a', first, '古い編集', [])
+    assert conflict.value.status == 409
+
+
+def test_tag_and_attachment_limits(tmp_path):
+    _, _, app = setup(tmp_path)
+    with TestClient(app, client=PEER) as client:
+        store = app.state.annotations
+        tags = [store.create_tag(f'tag-{i}') for i in range(200)]
+        assert client.post('/api/tags', json={'name': 'over-limit'}).status_code == 422
+        task = client.get('/api/schedules').json()['tasks'][0]
+        assert save(client, task, '多すぎるタグ', [t['id'] for t in tags[:65]]).status_code == 422
+        assert client.put('/api/tags/999999999999999999999', json={'name':'bad', 'version':1}).status_code == 422
+        assert client.request('DELETE','/api/tags/0',json={'version':1}).status_code == 422
+
+
+def test_database_observation_failure_is_reported_and_recoverable(tmp_path, monkeypatch):
+    _, _, app = setup(tmp_path)
+    with TestClient(app, client=PEER) as client:
+        store = app.state.annotations
+        observe = store.observe
+        def broken(*args, **kwargs):
+            raise sqlite3.OperationalError('PRIVATE_MARKER')
+        monkeypatch.setattr(store, 'observe', broken)
+        refresh = client.post('/api/refresh')
+        assert refresh.status_code == 503 and 'PRIVATE_MARKER' not in refresh.text
+        assert client.get('/api/schedules').status_code == 503
+        monkeypatch.setattr(store, 'observe', observe)
+        assert client.post('/api/refresh').status_code == 200
+        assert client.get('/api/schedules').status_code == 200
+
+
+def test_unwritable_database_fails_startup_without_sensitive_error(tmp_path, monkeypatch):
+    _, _, app = setup(tmp_path)
+    def broken():
+        raise PermissionError('PRIVATE_MARKER')
+    monkeypatch.setattr(app.state.annotations, 'initialize', broken)
+    with pytest.raises(RuntimeError, match='注釈DB') as error:
+        with TestClient(app, client=PEER):
+            pass
+    assert 'PRIVATE_MARKER' not in str(error.value)

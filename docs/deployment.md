@@ -72,6 +72,23 @@ QSV は実際の TCP 接続元を判定する。`X-Forwarded-For`、`Forwarded`�
 
 Docker と firewall の経路については [Docker のポート公開](https://docs.docker.com/engine/network/port-publishing/) と [firewall の説明](https://docs.docker.com/engine/network/packet-filtering-firewalls/) を参照。QSV が QTS の firewall を書き換える機能は持たない。
 
+## QNAP の注釈 DB
+
+`compose.yaml.example` の `qsv-data:/data` とトップレベルの `volumes.qsv-data`、`QSV_DB_PATH=/data/qsv.sqlite3` をローカルの Compose に反映する。イメージは `/data` を UID/GID 10001、mode 0700 で用意する。新しい空の named volume はこのディレクトリを使い、アプリは非 root で DB を初期化する。DB 本体は mode 0600。既存の Compose 全体や `.env` は上書きしない。
+
+DB を開発 PC の SMB/NFS マウント上には置かず、QNAP の Docker が管理するローカル volume に置く。root filesystem は read-only、crontab は read-only bind のままとする。書き込み可能な保存領域がない場合は起動を失敗させる。
+
+QSV_UID / QSV_GID を変更する場合は、停止中に volume 内の所有者も合わせる。例として UID/GID 10002 を使う場合は、設定変更後、起動前に以下を実行する。root と追加 capability を使うのはこの保守コンテナだけ。
+
+```sh
+sudo docker compose stop qsv
+sudo docker compose run --rm --no-deps --user 0:0 \
+  --cap-add CHOWN --cap-add DAC_OVERRIDE --entrypoint chown qsv -R 10002:10002 /data
+sudo docker compose up -d qsv
+```
+
+`docker compose down` と再作成では注釈が保持される。削除時の `down -v` は DB を消す。バックアップ・復元・スキーマ更新は [annotations.md](annotations.md)、main と worktree の一時切替は [worktree-testing.md](worktree-testing.md) を参照。
+
 ## server-a のリバースプロキシ
 
 プロキシは `deploy/proxy/compose.yaml.example` から作成した Compose と、同梱の `deploy/proxy/Caddyfile` を使う。`deploy/Caddyfile.qsv.example` は構成を説明するための別の設定例であり、起動時にコピーする必要はない。

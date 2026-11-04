@@ -85,15 +85,19 @@ class AnnotationStore:
     def observe(self, definition_ids: set[str], status: str, at: str, *, stale=False):
         with self.connection(write=True) as conn:
             conn.execute('UPDATE definitions SET presence=?', ('absent' if status in ('ok', 'empty') and not stale else 'unknown',))
-            if stale or status not in ('ok', 'empty', 'partial'):
-                return
-            for key in sorted(definition_ids):
+            observed = definition_ids if not stale and status in ('ok', 'empty', 'partial') else set()
+            for key in sorted(observed):
                 row = conn.execute('SELECT definition_id FROM definitions WHERE definition_id=?', (key,)).fetchone()
                 if row is None:
                     conn.execute('INSERT INTO definitions(definition_id,version,presence,last_seen_at) VALUES(?,?,?,?)',
                                  (key, self._revision(conn), 'present', at))
                 else:
                     conn.execute('UPDATE definitions SET presence=?, last_seen_at=? WHERE definition_id=?', ('present', at, key))
+            # Retain every saved annotation, but not an ever-growing history of
+            # unannotated definitions. New rows get a fresh global version, so
+            # deleting an empty record cannot cause a stale-editor ABA update.
+            conn.execute("""DELETE FROM definitions WHERE presence<>'present' AND display_name=''
+                AND NOT EXISTS(SELECT 1 FROM definition_tags WHERE definition_id=definitions.definition_id)""")
 
     def snapshot(self):
         with self.connection() as conn:

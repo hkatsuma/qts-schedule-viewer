@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const categories = {system:'システム',power:'電源',storage:'ストレージ',snapshot:'スナップショット',backup:'バックアップ',security:'セキュリティ',update:'更新',application:'アプリケーション',other:'その他'};
 const states = {ok:'正常',empty:'対応済み・該当タスクなし',partial:'部分的に取得',unsupported:'未対応',permission_denied:'アクセス権限不足',unavailable:'取得不可',parse_error:'解析エラー'};
-const views = ['week','month','list','status'];
+const views = ['week','month','list','status','annotations'];
 let data, revision = 0, activeView = 'week';
 const isoDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 function nasToday() {
@@ -24,7 +24,9 @@ const el = (tag,text,cls) => {
   return element;
 };
 function params() {
-  return new URLSearchParams({q:$('search').value,category:$('category').value,provider:$('provider').value,enabled:$('enabled').value,frequency:$('frequency').value});
+  const query=new URLSearchParams({q:$('search').value,category:$('category').value,provider:$('provider').value,enabled:$('enabled').value,frequency:$('frequency').value,tag_match:$('tag-match').value});
+  for (const id of selectedTags) query.append('tag',String(id));
+  return query;
 }
 function fmt(at) {
   return at ? new Intl.DateTimeFormat('ja-JP',{timeZone:data.timezone,dateStyle:'short',timeStyle:'short'}).format(new Date(at)) : '算出不可';
@@ -114,7 +116,8 @@ function showTasks(tasks,title,context) {
       `取得元: ${t.source.location}`,`設定場所: ${t.configuration_location}`
     ].join('\n');
     card.append(el('pre',description),commandControl(t,index),
-                el('pre',[`取得状態: ${collectionLabel(t)}`,...t.warnings].join('\n'),'task-collection'));
+                el('pre',[`取得状態: ${collectionLabel(t)}`,...t.warnings].join('\n'),'task-collection'),
+                el('p',`タグ: ${t.tags.map(tag => tag.name).join(' / ') || 'なし'}`),annotationEditButton(t));
     return card;
   });
   $('detail-body').replaceChildren(...(context ? [el('p',context)] : []),...cards);
@@ -134,6 +137,7 @@ function rows() {
     const tr = el('tr'), first = el('td'), button = el('button',t.name);
     button.onclick = () => showTasks([t]);
     first.append(button,el('small',categories[t.category] || t.category));
+    if (t.tags.length) first.append(el('span',t.tags.map(tag => tag.name).join(' / '),'task-tags'));
     tr.append(first);
     const values = [`${t.provider} / ${t.enabled === null ? '不明' : t.enabled ? '有効' : '無効'}`,`${t.schedule.description}\n${t.schedule.expression}`,fmt(t.next_runs[0]),`${t.configuration_location}\n${t.source.location}`,collectionLabel(t)];
     for (const value of values) tr.append(el('td',value));
@@ -243,6 +247,7 @@ async function load() {
     const incoming=await response.json();
     if (ticket!==revision) return;
     const initial=!data; data=incoming;
+    if (renderTagFilters(data.tags)) {await load(); return;}
     if (initial) {$('date').value=nasToday(); $('month-date').value=$('date').value.slice(0,7);}
     const selection=$('provider').value;
     const all=new Set([...Array.from($('provider').options).map(o => o.value),...data.tasks.map(t => t.provider)]);
@@ -252,6 +257,7 @@ async function load() {
     $('export').href='/api/export.csv?'+params(); rows();
     if (activeView==='week') await timeline(ticket);
     if (activeView==='month') await monthCalendar(ticket);
+    if (activeView==='annotations') await renderAnnotationManager(ticket);
   } catch {
     if (ticket===revision) $('notice').textContent='取得に失敗しました。接続を確認してください。表示済みの情報は古い可能性があります。';
   }
@@ -277,4 +283,5 @@ $('refresh').onclick=async() => {
   catch {$('notice').textContent='再取得に失敗しました';}
   finally {button.disabled=false;}
 };
-load(); setInterval(load,60000);
+initAnnotations();
+load(); setInterval(() => {if (activeView!=='annotations' && !$('annotation-editor').open) load();},60000);
