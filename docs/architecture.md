@@ -38,7 +38,7 @@ Collector 単位で状態・前回状態・最終正常取得日時を持つ。�
 
 GET /api/schedules は安全化済みの一覧と収集状態、GET /api/timeline?start=YYYY-MM-DD は7日分の予定、GET /api/month?month=YYYY-MM-DD は指定月の日別タスク集計、GET /api/export.csv は絞り込み適用後の CSV。POST /api/refresh はキャッシュの再収集のみ。HTTP リクエストからファイルパスを変更できない。
 
-Task.definition_id は注釈用の定義 ID、Task.id は同一定義の出現連番を付けた表示行 ID。duplicate_count は収集範囲の重複行数。同一定義の表示行を統合せず、タイムライン・コマンド API には表示行 ID を使う。識別の条件と注釈の保持・引き継ぎ仕様は [job-identity.md](job-identity.md) を参照。
+Task.definition_id は注釈用の定義 ID、Task.id は同じコマンドの出現連番を付けた表示行 ID。duplicate_count は収集範囲で同じコマンドを持つ行数。時刻・曜日は保存用 ID に含めず、表示行を統合せず、タイムライン・コマンド API には表示行 ID を使う。識別の条件と注釈の保持・引き継ぎ仕様は [job-identity.md](job-identity.md) を参照。
 
 GET /api/schedules/{task_id}/command は1件のコマンド全文と stale を返す。原文は Task の PrivateAttr として収集結果と同じメモリキャッシュに保持し、通常の JSON・CSV・検索には含めない。API はファイルを読み直さず、一覧と同じ収集時点の定義を返す。読み取り失敗時は前回の原文を保持して stale=true を返す。再収集で消えた ID や原文を分離できないタスクは404。取得可能性は一覧の command_available で示す。
 
@@ -46,7 +46,7 @@ cron の月日と曜日の両方が指定されている場合は OR。予定は
 
 ## 注釈の永続化
 
-SQLite の `definition_id` にタグ・表示名を関連付け、応答用のタスクコピーに適用する。Collector の設定情報やキャッシュを書き換えず、同一定義の各表示行に共通の注釈を返す。表示名は name、取得元の名前は original_name、編集用の版は annotation_version に返す。DB にコマンド・環境変数・cron 式は保存しない。
+SQLite の `definition_id` にタグ・表示名を関連付け、応答用のタスクコピーに適用する。Collector の設定情報やキャッシュを書き換えず、同じコマンドの各表示行に共通の表示名・タグを返す。表示名は name、取得元の名前は original_name、編集用の版は annotation_version に返す。DB にコマンド・環境変数・cron 式は保存しない。
 
 QNAP ローカル Docker volume の `/data/qsv.sqlite3` に書き込み、ほかの root filesystem は read-only を維持する。注釈の保存・コピーは収集と同じサービスロック下で現在の定義を再検証し、SQLite のトランザクション内で版を照合する。競合409、保存領域の障害503を返す。タグ API、明示コピー、注釈の不在判定、バックアップ・復元は [annotations.md](annotations.md) を参照。
 
