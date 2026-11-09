@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from src.api import create_app
 from src.collectors.cron import CronCollector
-from src.services.identity import cron_context_id, cron_definition_id
+from src.services.identity import cron_context_id, legacy_cron_definition_id
 
 NOW = datetime(2026, 11, 4, 12, tzinfo=ZoneInfo('Asia/Tokyo'))
 ROW = '0 3 * * * /example/job  --mode="daily report" # job-a'
@@ -27,12 +27,10 @@ def test_formatting_keeps_definition_and_row_id(tmp_path, text):
     after = collect(tmp_path, text).tasks[0]
     assert before.definition_id == after.definition_id
     assert before.id == after.id
-    assert len(before.definition_id) == len('cron-v1-') + 64
+    assert len(before.definition_id) == len('cron-v2-') + 64
 
 
 @pytest.mark.parametrize('changed', [
-    ROW.replace('0 3 ', '0 4 ', 1),
-    ROW.replace('0 3 ', '00 03 ', 1),
     ROW.replace('/example/job', '/example/other'),
     ROW.replace('  --mode', ' --mode'),
     ROW.replace('daily report', 'daily  report'),
@@ -78,11 +76,12 @@ def test_duplicates_share_definition_but_remain_separate_schedules(tmp_path):
     assert [t.duplicate_count for t in added] == [3, 3, 3]
 
 
-def test_distinct_schedules_or_comments_are_not_duplicates(tmp_path):
+def test_schedules_share_identity_but_comments_do_not(tmp_path):
     tasks = collect(tmp_path, '\n'.join([ROW, ROW.replace('0 3 ', '0 4 ', 1),
                                           ROW.replace('# job-a', '# job-b')])).tasks
-    assert len({t.definition_id for t in tasks}) == 3
-    assert [t.duplicate_count for t in tasks] == [1, 1, 1]
+    assert len({t.definition_id for t in tasks}) == 2
+    assert [t.duplicate_count for t in tasks] == [2, 2, 1]
+    assert len({t.id for t in tasks}) == 3
 
 
 def test_disappearing_and_returning_definition_is_deterministic(tmp_path):
@@ -97,32 +96,32 @@ def test_disappearing_and_returning_definition_is_deterministic(tmp_path):
     'SHELL=/bin/sh', 'PATH=/example/bin', 'MODE=PRIVATE_MARKER',
     'CRON_TZ=UTC', 'TZ=Asia/Tokyo',
 ])
-def test_environment_changes_invalidate_definitions_without_disclosure(tmp_path, declaration):
+def test_environment_changes_keep_command_identity_without_disclosure(tmp_path, declaration):
     before = collect(tmp_path, ROW).tasks[0]
     changed = collect(tmp_path, declaration + '\n' + ROW)
-    assert changed.tasks[0].definition_id != before.definition_id
+    assert changed.tasks[0].definition_id == before.definition_id
     assert 'PRIVATE_MARKER' not in changed.model_dump_json()
     assert 'PRIVATE_MARKER' not in repr(changed)
 
 
 def test_environment_boundaries_and_order_are_preserved(tmp_path):
     tasks = collect(tmp_path, ROW + '\nMODE=one\n' + ROW).tasks
-    assert tasks[0].definition_id != tasks[1].definition_id
+    assert tasks[0].definition_id == tasks[1].definition_id
+    assert tasks[0]._legacy_definition_id != tasks[1]._legacy_definition_id
     before = collect(tmp_path, 'PATH=/example/bin\nMODE=one\n' + ROW).tasks[0]
     reordered = collect(tmp_path, 'MODE=one\nPATH=/example/bin\n' + ROW).tasks[0]
-    assert before.definition_id != reordered.definition_id
-    # Even declarations after a job matter conservatively: QTS scoping is not
-    # inferred and no annotation silently crosses an environment change.
-    assert tasks[0].definition_id != collect(tmp_path, ROW).tasks[0].definition_id
+    assert before.definition_id == reordered.definition_id
+    assert before._legacy_definition_id != reordered._legacy_definition_id
+    assert tasks[0].definition_id == collect(tmp_path, ROW).tasks[0].definition_id
 
 
-def test_timezone_and_logical_source_are_part_of_identity(tmp_path):
+def test_timezone_does_not_change_identity_and_legacy_keys_stay_frozen(tmp_path):
     task = collect(tmp_path, ROW).tasks[0]
-    assert task.definition_id != collect(tmp_path, ROW, timezone='UTC').tasks[0].definition_id
+    assert task.definition_id == collect(tmp_path, ROW, timezone='UTC').tasks[0].definition_id
     options = dict(scope=0, expression='0 3 * * *', command='/example/job', raw_line='ignored')
     a = cron_context_id(source='source-a', timezone='Asia/Tokyo', environment=())
     b = cron_context_id(source='source-b', timezone='Asia/Tokyo', environment=())
-    assert cron_definition_id(context_id=a, **options) != cron_definition_id(context_id=b, **options)
+    assert legacy_cron_definition_id(context_id=a, **options) != legacy_cron_definition_id(context_id=b, **options)
 
 
 def test_opaque_and_invalid_rows_are_conservative(tmp_path):
@@ -134,7 +133,7 @@ def test_opaque_and_invalid_rows_are_conservative(tmp_path):
     assert collect(tmp_path, ' ' + text).tasks[0].definition_id != before.definition_id
     invalid = collect(tmp_path, '99 3 * * * /example/job').tasks[0]
     assert invalid.collection_status == 'parse_error'
-    assert invalid.definition_id != collect(tmp_path, '0 3 * * * /example/job').tasks[0].definition_id
+    assert invalid.definition_id == collect(tmp_path, '0 3 * * * /example/job').tasks[0].definition_id
 
 
 def test_trailing_command_whitespace_is_not_discarded(tmp_path):
@@ -157,10 +156,11 @@ def test_empty_command_is_not_a_standard_definition(tmp_path):
     assert not task.command_available
 
 
-def test_v1_persisted_key_contract(tmp_path):
+def test_legacy_v1_key_contract_for_migration(tmp_path):
     # Persisted annotations must not silently change keys after a refactor.
     task = collect(tmp_path, '0 3 * * * /example/job').tasks[0]
-    assert task.definition_id == 'cron-v1-e26941c18e41d783f6404fb72b99e4a8c56d2d8e50f637975ed308e773fdd2b5'
+    assert task._legacy_definition_id == 'cron-v1-e26941c18e41d783f6404fb72b99e4a8c56d2d8e50f637975ed308e773fdd2b5'
+    assert task.definition_id.startswith('cron-v2-')
     assert task.id == task.definition_id + '-1'
 
 
@@ -191,5 +191,22 @@ def test_api_identity_survives_formatting_but_not_replacement(tmp_path):
         assert {event['task_id'] for event in events} == {t['id'] for t in tasks}
         path.write_text(ROW.replace('0 3 ', '0 4 ', 1))
         assert client.post('/api/refresh').status_code == 200
+        assert client.get(route).status_code == 200
+        assert client.get('/api/schedules').json()['tasks'][0]['definition_id'] == tasks[0]['definition_id']
+        path.write_text(ROW.replace('/example/job', '/example/replaced'))
+        assert client.post('/api/refresh').status_code == 200
         assert client.get(route).status_code == 404
         assert client.get('/api/schedules').json()['tasks'][0]['definition_id'] != tasks[0]['definition_id']
+
+
+@pytest.mark.parametrize('expression', ['1 2,5,8,11,14,17,20,23 * * *', '1 1,4,7,10,13,16,19,22 * * *', '0 4 1 * *', '99 3 * * *'])
+def test_every_schedule_field_is_excluded_from_command_identity(tmp_path, expression):
+    before = collect(tmp_path, '0 3 * * * /example/task --option=value').tasks[0]
+    after = collect(tmp_path, expression + ' /example/task --option=value').tasks[0]
+    assert after.definition_id == before.definition_id
+    assert after.id == before.id
+
+
+def test_v2_persisted_key_contract(tmp_path):
+    task = collect(tmp_path, '0 3 * * * /example/job').tasks[0]
+    assert task.definition_id == 'cron-v2-ecf63c6e17efd1854ada46f780a4345da7d41c2856d82b2d76a291ac6c646a0a'

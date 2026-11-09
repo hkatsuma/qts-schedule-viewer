@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from src.models import Collection, Schedule, Source, Task
 from src.services.schedules import describe, next_runs, validate, runs_per_active_day
-from src.services.identity import cron_context_id, cron_definition_id
+from src.services.identity import cron_context_id, cron_definition_id, legacy_cron_definition_id
 
 MAX_BYTES = 1024 * 1024
 MAX_TASKS = 500
@@ -67,8 +67,7 @@ class CronCollector:
             if len(parts) != 6 or not parts[5] or not all(re.fullmatch(token, part, re.I) for part in parts[:5]):
                 expression = '@unsupported'
             command = parts[5] if len(parts) >= 6 else line
-            definition_id = cron_definition_id(context_id=context_id, scope=env_scope,
-                expression=expression, command=command, raw_line=raw)
+            definition_id = cron_definition_id(expression=expression, command=command, raw_line=raw)
             duplicates[definition_id] += 1
             task = Task(id=f'{definition_id}-{duplicates[definition_id]}',
                         definition_id=definition_id, name=f'cron ジョブ（行 {number}）',
@@ -76,6 +75,8 @@ class CronCollector:
                                           description=describe(expression) if len(expression.split()) == 5 else '未対応の記法'),
                         source=Source(collector='cron', location=SOURCE_LOCATION), command=safe_command(command),
                         collected_at=now)
+            task._legacy_definition_id = legacy_cron_definition_id(context_id=context_id, scope=env_scope,
+                expression=expression, command=command, raw_line=raw)
             if expression != '@unsupported':
                 # Preserve the command from this snapshot, even if its cron
                 # fields fail validation. Unseparable rows remain unavailable.

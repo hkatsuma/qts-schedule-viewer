@@ -14,7 +14,7 @@ def cron_context_id(*, source: str, timezone: str, environment: tuple[str, ...])
     return _digest(['cron-context-v1', source, timezone, environment])
 
 
-def cron_definition_id(*, context_id: str, scope: int,
+def legacy_cron_definition_id(*, context_id: str, scope: int,
                        expression: str, command: str, raw_line: str) -> str:
     # An unsupported row is opaque: never infer a command or strip comments.
     definition = (['opaque', raw_line] if expression == '@unsupported'
@@ -23,3 +23,11 @@ def cron_definition_id(*, context_id: str, scope: int,
     # length distinguishes identical rows across environment boundaries without
     # claiming to reproduce QTS's environment/expansion semantics.
     return 'cron-v1-' + _digest(['cron-v1', context_id, scope, definition])
+
+
+def cron_definition_id(*, expression: str, command: str, raw_line: str) -> str:
+    # A command identifies the shared display name/tags; schedule and execution
+    # environment are properties of each row, not part of this identity.
+    definition = (['opaque', raw_line] if expression == '@unsupported'
+                  else ['command', command])
+    return 'cron-v2-' + _digest(['cron-v2', definition])

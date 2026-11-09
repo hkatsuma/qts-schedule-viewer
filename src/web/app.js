@@ -151,6 +151,7 @@ function rows() {
   }
   const cron = data.collections.find(c => c.collector === 'cron');
   $('notice').textContent = `${data.timezone} · 最終収集 ${cron ? fmt(cron.attempted_at) : '未取得'} · ${cron ? states[cron.status] : ''}${cron?.stale ? ' · 注意: 前回の古い情報を表示中' : ''} · cron 以外は実機調査待ち`;
+  if (data.identity_conflict_count) $('notice').textContent+=` · 表示名・タグの選択待ち: ${data.identity_conflict_count} 件。「タグ・表示名」画面でコピーする内容を選んでください。`;
 }
 async function timeline(ticket) {
   const start = new Date($('date').value+'T12:00:00');

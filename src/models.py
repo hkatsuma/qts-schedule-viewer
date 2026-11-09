@@ -44,6 +44,7 @@ class Task(BaseModel):
     command_available: bool = False
     # Never serialize the original command, including nested collections.
     _raw_command: str | None = PrivateAttr(default=None)
+    _legacy_definition_id: str | None = PrivateAttr(default=None)
     configuration_location: str = 'QTS / cron'
     collection_status: str = 'ok'
     collected_at: datetime | None = None

@@ -62,7 +62,7 @@ def check(page, base, path):
     page.locator('#annotation-cancel').click()
     page.locator('#close').click()
     # A definition change cannot inherit annotations until explicitly copied.
-    path.write_text(ROWS.replace('0 3 ', '0 5 '))
+    path.write_text(ROWS.replace('/example/job', '/example/replaced'))
     page.locator('#refresh').click()
     page.locator('[data-view=annotations]').click()
     source=page.locator('.annotation-record').filter(has=page.get_by_role('heading', name='他の編集', exact=True))
