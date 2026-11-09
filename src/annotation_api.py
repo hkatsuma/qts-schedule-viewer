@@ -28,8 +28,8 @@ class AnnotationUpdate(Version):
 
 
 class AnnotationCopy(Input):
-    source_id: str = Field(pattern=r'^cron-v1-[0-9a-f]{64}$')
-    target_id: str = Field(pattern=r'^cron-v1-[0-9a-f]{64}$')
+    source_id: str = Field(pattern=r'^cron-v[12]-[0-9a-f]{64}$')
+    target_id: str = Field(pattern=r'^cron-v[12]-[0-9a-f]{64}$')
     source_version: int = Field(ge=1, le=2**63-1)
     target_version: int = Field(ge=1, le=2**63-1)
     overwrite: bool = False

@@ -36,7 +36,7 @@ function openAnnotationEditor(task) {
   $('annotation-title').textContent=task.name;
   $('display-name').value=task.display_name;
   $('display-name').placeholder=task.original_name;
-  $('annotation-scope').textContent=task.duplicate_count>1 ? `同じ定義の ${task.duplicate_count} 行に共通で反映します。` : '';
+  $('annotation-scope').textContent=task.duplicate_count>1 ? `同じコマンドの ${task.duplicate_count} 行に共通で反映します。` : '';
   const assigned=new Set(task.tags.map(t => t.id));
   $('annotation-tags').replaceChildren(...data.tags.map(tag => tagLabel(tag,assigned.has(tag.id),() => {})));
   if (!data.tags.length) $('annotation-tags').append(el('p','「タグ・表示名」画面でタグを作成できます。'));

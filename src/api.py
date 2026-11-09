@@ -120,6 +120,8 @@ def create_app(path: Path | None = None, timezone: str | None = None,
             task.name = task.display_name or stored.name
             task.tags = [Tag(**tag) for tag in annotation['tags']]
             task.annotation_version = annotation['version']
+        if task.definition_id in snapshot['identity_conflicts']:
+            task.warnings.append('同じコマンドに異なる表示名・タグが保存されています。「タグ・表示名」画面でコピーする内容を選んでください。')
         return task
 
     def tasks(q: str = '', category: str = '', provider: str = '', enabled: str = '', frequency: Frequency = 'all',
@@ -160,6 +162,7 @@ def create_app(path: Path | None = None, timezone: str | None = None,
                 'hidden_by_frequency': len(matching) - len(visible),
                 'frequent_runs_per_day': FREQUENT_RUNS_PER_DAY,
                 'tags': snapshot['tags'],
+                'identity_conflict_count': len({t.definition_id for c in service.results.values() if not c.stale for t in c.tasks} & snapshot['identity_conflicts']),
                 'collections': [c.model_copy(update={'tasks': [decorated(t, snapshot) for t in c.tasks]}) for c in service.results.values()]}
 
     @app.post('/api/refresh')

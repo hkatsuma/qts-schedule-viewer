@@ -13,7 +13,7 @@ def read_database(path):
         raise RuntimeError('DBファイルがありません')
     conn = sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=5)
     try:
-        if conn.execute('PRAGMA user_version').fetchone()[0] != SCHEMA_VERSION:
+        if conn.execute('PRAGMA user_version').fetchone()[0] not in (1, SCHEMA_VERSION):
             raise RuntimeError('バックアップのスキーマに対応していません')
         if conn.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
             raise RuntimeError('DBの整合性を確認できません')

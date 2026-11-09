@@ -47,9 +47,13 @@ class CollectionService:
             self.results['cron'] = result
             if self.annotations:
                 try:
+                    migrations = {}
+                    for task in result.tasks:
+                        if task.definition_id and task._legacy_definition_id:
+                            migrations.setdefault(task.definition_id, set()).add(task._legacy_definition_id)
                     await asyncio.to_thread(self.annotations.observe,
                         {t.definition_id for t in result.tasks if t.definition_id},
-                        result.status, result.attempted_at.isoformat(), stale=result.stale)
+                        result.status, result.attempted_at.isoformat(), stale=result.stale, identity_migrations=migrations)
                     self.annotation_error = False
                 except (sqlite3.Error, OSError):
                     self.annotation_error = True

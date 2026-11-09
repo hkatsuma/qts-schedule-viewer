@@ -2,9 +2,11 @@
 from contextlib import contextmanager, closing
 from pathlib import Path
 import sqlite3
+import os
+import tempfile
 import unicodedata
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_TAGS = 200
 
 
@@ -45,10 +47,23 @@ class AnnotationStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self.path, timeout=5)) as conn:
             version = conn.execute('PRAGMA user_version').fetchone()[0]
-            if version not in (0, SCHEMA_VERSION):
+            if version not in (0, 1, SCHEMA_VERSION):
                 raise RuntimeError('注釈DBのスキーマバージョンに対応していません')
             conn.execute('PRAGMA journal_mode=WAL')
         with self.connection(write=True) as conn:
+            version = conn.execute('PRAGMA user_version').fetchone()[0]
+            if version == 1:
+                # A separate WAL reader can back up the committed v1 state
+                # while this transaction excludes other writers.
+                fd, filename = tempfile.mkstemp(prefix=self.path.name + '.before-v2-', suffix='.sqlite3', dir=self.path.parent)
+                os.close(fd)
+                try:
+                    with closing(sqlite3.connect(self.path, timeout=5)) as reader, closing(sqlite3.connect(filename)) as output:
+                        reader.backup(output)
+                        output.execute('PRAGMA journal_mode=DELETE')
+                except BaseException:
+                    Path(filename).unlink(missing_ok=True)
+                    raise
             if version == 0:
                 for statement in (
                     'CREATE TABLE metadata (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL)',
@@ -65,6 +80,10 @@ class AnnotationStore:
                         PRIMARY KEY(definition_id, tag_id))''',
                 ):
                     conn.execute(statement)
+            if version < 2:
+                conn.execute('CREATE TABLE identity_migrations (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL, resolved INTEGER NOT NULL DEFAULT 0)')
+                conn.execute('CREATE INDEX identity_migrations_target ON identity_migrations(new_id,resolved)')
+                conn.execute('CREATE TABLE identity_resolutions (definition_id TEXT PRIMARY KEY)')
                 conn.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
         self.path.chmod(0o600)
 
@@ -82,10 +101,57 @@ class AnnotationStore:
             raise AnnotationError(409, '他の操作で表示名またはタグが更新されました。読み直してください')
         return row
 
-    def observe(self, definition_ids: set[str], status: str, at: str, *, stale=False):
+    @staticmethod
+    def _resolve_identity(conn, definition_id):
+        conn.execute('UPDATE identity_migrations SET resolved=1 WHERE new_id=?', (definition_id,))
+        conn.execute('INSERT OR IGNORE INTO identity_resolutions VALUES(?)', (definition_id,))
+
+    @staticmethod
+    def _payload(conn, definition_id):
+        row = conn.execute('SELECT display_name FROM definitions WHERE definition_id=?', (definition_id,)).fetchone()
+        if row is None:
+            return None
+        tags = tuple(r[0] for r in conn.execute('SELECT tag_id FROM definition_tags WHERE definition_id=? ORDER BY tag_id', (definition_id,)))
+        return (row[0], tags) if row[0] or tags else None
+
+    def _migrate_identities(self, conn, observed, migrations):
+        # Only exact v1 fingerprints computed from a collected row establish a
+        # mapping. No schedule guesses, row-position matching or label matching.
+        for new_id, old_ids in migrations.items():
+            if new_id not in observed or conn.execute('SELECT 1 FROM identity_resolutions WHERE definition_id=?', (new_id,)).fetchone():
+                continue
+            for old_id in old_ids:
+                if self._payload(conn, old_id) is not None:
+                    conn.execute('INSERT OR IGNORE INTO identity_migrations(old_id,new_id) VALUES(?,?)', (old_id, new_id))
+        groups = {}
+        for row in conn.execute('SELECT old_id,new_id FROM identity_migrations WHERE resolved=0'):
+            if row['new_id'] in observed:
+                groups.setdefault(row['new_id'], []).append(row['old_id'])
+        for new_id, old_ids in groups.items():
+            if conn.execute('SELECT 1 FROM identity_resolutions WHERE definition_id=?', (new_id,)).fetchone():
+                self._resolve_identity(conn, new_id)
+                continue
+            sources = {key: payload for key in old_ids if (payload := self._payload(conn, key)) is not None}
+            target = self._payload(conn, new_id)
+            payloads = set(sources.values()) | ({target} if target is not None else set())
+            if len(payloads) > 1:
+                continue  # Preserve every source; resolve with an explicit copy.
+            if sources:
+                display_name, tags = next(iter(payloads))
+                if target is None:
+                    version = self._revision(conn)
+                    conn.execute("INSERT INTO definitions(definition_id,display_name,version,presence) VALUES(?,?,?,'unknown') ON CONFLICT(definition_id) DO UPDATE SET display_name=excluded.display_name,version=excluded.version", (new_id, display_name, version))
+                    conn.execute('DELETE FROM definition_tags WHERE definition_id=?', (new_id,))
+                    conn.executemany('INSERT INTO definition_tags VALUES(?,?)', [(new_id, tag) for tag in tags])
+                # Values have been copied successfully in this transaction.
+                conn.executemany('DELETE FROM definitions WHERE definition_id=?', [(key,) for key in sources])
+            self._resolve_identity(conn, new_id)
+
+    def observe(self, definition_ids: set[str], status: str, at: str, *, stale=False, identity_migrations=None):
         with self.connection(write=True) as conn:
             conn.execute('UPDATE definitions SET presence=?', ('absent' if status in ('ok', 'empty') and not stale else 'unknown',))
             observed = definition_ids if not stale and status in ('ok', 'empty', 'partial') else set()
+            self._migrate_identities(conn, observed, identity_migrations or {})
             for key in sorted(observed):
                 row = conn.execute('SELECT definition_id FROM definitions WHERE definition_id=?', (key,)).fetchone()
                 if row is None:
@@ -106,7 +172,10 @@ class AnnotationStore:
             annotations = {row['definition_id']: dict(row) | {'tags': []} for row in conn.execute('SELECT * FROM definitions')}
             for row in conn.execute('SELECT definition_id,tag_id FROM definition_tags ORDER BY tag_id'):
                 annotations[row['definition_id']]['tags'].append(by_id[row['tag_id']])
-            return {'tags': tags, 'annotations': annotations}
+            conflicts = {row[0] for row in conn.execute("""SELECT DISTINCT m.new_id FROM identity_migrations m
+                JOIN definitions d ON d.definition_id=m.old_id WHERE m.resolved=0
+                AND (d.display_name<>'' OR EXISTS(SELECT 1 FROM definition_tags WHERE definition_id=m.old_id))""")}
+            return {'tags': tags, 'annotations': annotations, 'identity_conflicts': conflicts}
 
     def create_tag(self, name):
         name = clean_name(name, 40)
@@ -156,6 +225,7 @@ class AnnotationStore:
             conn.execute('UPDATE definitions SET display_name=?,version=? WHERE definition_id=?', (display_name, new_version, definition_id))
             conn.execute('DELETE FROM definition_tags WHERE definition_id=?', (definition_id,))
             conn.executemany('INSERT INTO definition_tags VALUES(?,?)', [(definition_id, i) for i in sorted(ids)])
+            self._resolve_identity(conn, definition_id)
             return {'definition_id': definition_id, 'version': new_version}
 
     def copy(self, source_id, target_id, source_version, target_version, *, overwrite=False):
@@ -176,4 +246,5 @@ class AnnotationStore:
             conn.execute('UPDATE definitions SET display_name=?,version=? WHERE definition_id=?', (source['display_name'], version, target_id))
             conn.execute('DELETE FROM definition_tags WHERE definition_id=?', (target_id,))
             conn.executemany('INSERT INTO definition_tags VALUES(?,?)', [(target_id, i) for i in ids])
+            self._resolve_identity(conn, target_id)
             return {'definition_id': target_id, 'version': version}
