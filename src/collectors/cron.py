@@ -10,6 +10,7 @@ MAX_BYTES = 1024 * 1024
 MAX_TASKS = 500
 SOURCE_LOCATION = '/etc/config/crontab'
 ENVIRONMENT_ASSIGNMENT = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$')
+REBOOT_COMMANDS = frozenset({'reboot', '/etc/init.d/reboot', '/sbin/reboot', '/usr/sbin/reboot'})
 
 
 def safe_command(command: str) -> str:
@@ -69,8 +70,10 @@ class CronCollector:
             command = parts[5] if len(parts) >= 6 else line
             definition_id = cron_definition_id(expression=expression, command=command, raw_line=raw)
             duplicates[definition_id] += 1
+            reboot = expression != '@unsupported' and command.strip(' \t') in REBOOT_COMMANDS
             task = Task(id=f'{definition_id}-{duplicates[definition_id]}',
-                        definition_id=definition_id, name=f'cron ジョブ（行 {number}）',
+                        definition_id=definition_id, name='再起動' if reboot else f'cron ジョブ（行 {number}）',
+                        category='power' if reboot else 'system',
                         schedule=Schedule(expression=expression, timezone=self.timezone,
                                           description=describe(expression) if len(expression.split()) == 5 else '未対応の記法'),
                         source=Source(collector='cron', location=SOURCE_LOCATION), command=safe_command(command),

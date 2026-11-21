@@ -51,6 +51,24 @@ def test_month_aggregation_matches_exact_daily_occurrences(expression, year, mon
             assert summary['first_run'].timestamp() == runs[0].timestamp()
 
 
+def test_power_category_for_standalone_cron_reboot(tmp_path):
+    path = tmp_path / 'cron'
+    path.write_text('0 0 * * 6 /etc/init.d/reboot\n0 0 * * 6 /example/notify reboot\n0 0 * * 6 reboot --flag\n')
+    with TestClient(create_app(path, allowed_proxy_ips='127.0.0.1'), client=('127.0.0.1', 12345)) as client:
+        tasks = client.get('/api/schedules?category=power').json()['tasks']
+        assert len(tasks) == 1
+        task = tasks[0]
+        assert task['name'] == '再起動'
+        assert task['source']['collector'] == 'cron'
+        assert task['command'] == '[コマンド非表示]'
+        events = client.get('/api/timeline?start=2026-11-01&category=power').json()['events']
+        assert [(event['task_id'], event['at']) for event in events] == [(task['id'], '2026-11-07T00:00:00+09:00')]
+        days = client.get('/api/month?month=2026-11-01&category=power').json()['days']
+        assert [day['day'] for day in days] == ['2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28']
+        csv = client.get('/api/export.csv?category=power').text
+        assert '再起動,power' in csv and 'cron ジョブ' not in csv
+
+
 def test_frequency_filter_applies_before_timeline_limit_and_to_exports(tmp_path):
     path = tmp_path / 'cron'
     path.write_text('* * * * * /example/minutely-a\n* * * * * /example/minutely-b\n* * * * * /example/minutely-c\n0 * * * * /example/hourly\n0 3 1 * * /example/monthly\n0 4 * * * /example/daily\n@reboot /example/unknown')
