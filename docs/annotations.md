@@ -51,7 +51,9 @@ SQLite は WAL、接続ごとに foreign_keys を有効化し、書き込みは 
 
 オンラインバックアップは Python の SQLite backup API を使う。DB 本体だけを稼働中に cp しない。バックアップは既存ファイルを上書きせず、単一ファイルとして保存する。
 
-QNAP の main のリポジトリルートで、バックアップ名を設定して実行する。
+### QNAP ホストへバックアップをコピー
+
+QNAP に SSH し、通常の QSV 用 `compose.yaml` がある main のリポジトリルートで実行する。`exec` はコンテナの `/data` にバックアップを作り、`compose cp` はそのファイルを QNAP ホスト側の現在のディレクトリ（`./`）へコピーする。
 
 ```sh
 QSV_BACKUP="qsv-backup-$(date +%Y%m%d-%H%M%S).sqlite3"
@@ -59,7 +61,28 @@ sudo docker compose exec -T qsv python -m src.manage_db backup "/data/$QSV_BACKU
 sudo docker compose cp "qsv:/data/$QSV_BACKUP" "./$QSV_BACKUP"
 ```
 
-ホストへコピーしたバックアップは別の保管先にも保存する。`/data` 内だけではボリューム消失への備えにならない。バックアップは Git 管理しない。複数 NAS で DB を共用しない。
+`/data` は本番 DB を置いている Docker ボリューム `qsv-data` のマウント先。同じ `/data` にあるバックアップも、`docker compose down -v` などでそのボリュームを削除すると本番 DB と一緒に失われる。`compose cp` で作ったホスト側のコピーは、そのボリュームを削除しても残る。スキーマ更新時に `/data` に自動作成されるバックアップにも同じことが当てはまる。
+
+QNAP の故障にも備えるには、ホスト側にコピーしたファイルを QNAP とは別の保管先にも保存する。3-2-1 バックアップを組む場合は、本番データを含めて3コピーを2種類の媒体に置き、そのうち1コピーを別拠点に置く。バックアップは Git 管理しない。複数 NAS で DB を共用しない。
+
+### QNAP で稼働中の DB のスキーマを確認
+
+QNAP の main のリポジトリルートで実行する。更新前と更新後に、稼働中の QSV が使う DB の `PRAGMA user_version` を読み取れる。更新後の結果が `2` ならスキーマ2。更新前が `1`、更新後が `2` ならスキーマの移行を確認できる。表示名とタグの保持はブラウザで確認する。
+
+```sh
+sudo docker compose exec -T qsv python - <<'PY'
+import os
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+
+path = Path(os.getenv('QSV_DB_PATH', '/data/qsv.sqlite3'))
+with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)) as db:
+    print(db.execute('PRAGMA user_version').fetchone()[0])
+PY
+```
+
+### QNAP で復元または削除
 
 復元は qsv を停止し、同じ版のイメージを使って行う。ボリューム内にバックアップがある場合：
 
