@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from src.models import Collection
 from src.collectors.cron import CronCollector
 
-UNSUPPORTED = {'power': '電源', 'raid': 'RAIDスクラビング', 'smart': 'S.M.A.R.T.',
+UNSUPPORTED = {'power': 'QTS 電源スケジュールの直接取得', 'raid': 'RAIDスクラビング', 'smart': 'S.M.A.R.T.',
                'snapshot': 'スナップショット', 'hbs': 'HBS 3', 'security': 'セキュリティ',
                'updates': '更新', 'qpkg': 'QPKG'}
 
